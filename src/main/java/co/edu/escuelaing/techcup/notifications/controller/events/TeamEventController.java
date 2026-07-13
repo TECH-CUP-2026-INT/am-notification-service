@@ -1,8 +1,10 @@
 package co.edu.escuelaing.techcup.notifications.controller.events;
 
+import co.edu.escuelaing.techcup.notifications.dto.event.CaptaincyTransferEvent;
 import co.edu.escuelaing.techcup.notifications.dto.event.TeamInvitationEvent;
 import co.edu.escuelaing.techcup.notifications.dto.event.TeamLinkRequestEvent;
 import co.edu.escuelaing.techcup.notifications.dto.event.TeamLinkResponseEvent;
+import co.edu.escuelaing.techcup.notifications.listener.CaptaincyTransferEventListener;
 import co.edu.escuelaing.techcup.notifications.listener.TeamLinkEventListener;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -14,16 +16,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Webhooks propuestos para el Servicio de Equipos. Contratos pendientes de confirmar:
- * ver TeamLinkRequestEvent, TeamLinkResponseEvent, TeamInvitationEvent.
+ * ver TeamLinkRequestEvent, TeamLinkResponseEvent, TeamInvitationEvent,
+ * CaptaincyTransferEvent.
  */
 @RestController
 @RequestMapping("/api/notificaciones/equipos")
 public class TeamEventController {
 
     private final TeamLinkEventListener teamLinkEventListener;
+    private final CaptaincyTransferEventListener captaincyTransferEventListener;
 
-    public TeamEventController(TeamLinkEventListener teamLinkEventListener) {
+    public TeamEventController(TeamLinkEventListener teamLinkEventListener,
+            CaptaincyTransferEventListener captaincyTransferEventListener) {
         this.teamLinkEventListener = teamLinkEventListener;
+        this.captaincyTransferEventListener = captaincyTransferEventListener;
     }
 
     @PostMapping("/solicitudes")
@@ -41,6 +47,12 @@ public class TeamEventController {
     @PostMapping("/invitaciones")
     public ResponseEntity<Void> receiveInvitation(@RequestBody @Valid TeamInvitationEvent event) {
         teamLinkEventListener.onTeamInvited(event);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+    }
+
+    @PostMapping("/capitania")
+    public ResponseEntity<Void> receiveCaptaincyTransfer(@RequestBody @Valid CaptaincyTransferEvent event) {
+        captaincyTransferEventListener.onCaptaincyTransferred(event);
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
 }

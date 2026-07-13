@@ -4,6 +4,7 @@ import co.edu.escuelaing.techcup.notifications.security.InternalApiKeyFilter;
 import co.edu.escuelaing.techcup.notifications.security.JwtClaimsFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -30,6 +31,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        // Webhooks de eventos: solo servicio-a-servicio (API key interna),
+                        // nunca un JWT de usuario final - de lo contrario cualquier usuario
+                        // autenticado podría falsificar eventos de otros servicios.
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/notificaciones/sanciones",
+                                "/api/notificaciones/mensajes",
+                                "/api/notificaciones/equipos/**",
+                                "/api/notificaciones/inscripciones/**",
+                                "/api/notificaciones/partidos")
+                        .hasRole("SERVICIO_INTERNO")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtClaimsFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(internalApiKeyFilter, UsernamePasswordAuthenticationFilter.class);
