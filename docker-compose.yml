@@ -1,18 +1,16 @@
 services:
-  postgres:
-    image: postgres:16
+  mongo:
+    image: mongo:7
     container_name: techcup-notifications-db
-    environment:
-      POSTGRES_DB: techcup_notifications
-      POSTGRES_PASSWORD: postgres
     ports:
-      # 5433 en el host para no chocar con otro Postgres local en 5432; el
-      # contenedor de la app usa el puerto interno 5432 vía la red de docker.
-      - "5433:5432"
+      # 27019 en el host para no chocar con los otros servicios del workspace
+      # (que usan 27017/27018); el contenedor de la app usa el puerto interno
+      # 27017 vía la red de docker.
+      - "27019:27017"
     volumes:
-      - techcup-notifications-data:/var/lib/postgresql/data
+      - techcup-notifications-mongodata:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,18 +19,14 @@ services:
     build: .
     container_name: techcup-notifications-app
     depends_on:
-      postgres:
+      mongo:
         condition: service_healthy
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: techcup_notifications
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      MONGODB_URI: mongodb://mongo:27017/techcup_notifications
       SERVER_PORT: 8083
       INTERNAL_API_KEY: local-dev-internal-key
     ports:
       - "8083:8083"
 
 volumes:
-  techcup-notifications-data:
+  techcup-notifications-mongodata:

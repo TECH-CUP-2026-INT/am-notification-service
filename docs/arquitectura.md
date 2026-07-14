@@ -100,11 +100,11 @@ llame a ese endpoint. No hay nada más que este equipo pueda hacer para
 
 ## Servicios propios de astromerge (D3) y sus puertos
 
-| Servicio | Puerto app (Docker) | Puerto Postgres (host) |
+| Servicio | Puerto app (Docker) | Puerto MongoDB (host) |
 |---|---|---|
-| `am-matches-service` | `8080` | `5432` |
-| `am-notification-service` | `8083` | `5433` |
-| `am-logistic-service` | `8085` | `5434` |
+| `am-matches-service` | `8080` | `27017` |
+| `am-notification-service` | `8083` | `27019` |
+| `am-logistic-service` | `8085` | `27018` |
 
 ## Verificación de conectividad end-to-end
 

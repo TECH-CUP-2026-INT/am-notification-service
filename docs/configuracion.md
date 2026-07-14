@@ -15,14 +15,14 @@ cd am-notification-service
 docker compose up --build
 ```
 
-Levanta Postgres (con healthcheck) y la app ya conectada a él. Flyway aplica
-la migración automáticamente al arrancar. Cuando ambos contenedores estén
+Levanta MongoDB (con healthcheck) y la app ya conectada a él. Los índices se
+crean automáticamente al arrancar. Cuando ambos contenedores estén
 arriba:
 
 - Swagger UI: [http://localhost:8083/swagger-ui/index.html](http://localhost:8083/swagger-ui/index.html)
 - Health: [http://localhost:8083/actuator/health](http://localhost:8083/actuator/health)
-- Postgres queda expuesto en el host en `5433` (no `5432`, para no chocar con
-  el Postgres de `am-matches-service` ni con otro Postgres local).
+- MongoDB queda expuesto en el host en `27019` (no `27017`, para no chocar con
+  el Mongo de `am-matches-service` ni con otro Mongo local).
 
 `docker compose down` para apagar todo; agrega `-v` si además quieres borrar
 los datos persistidos.
@@ -33,19 +33,14 @@ los datos persistidos.
 ./mvnw spring-boot:run
 ```
 
-Requiere una instancia de PostgreSQL accesible (Flyway aplica la migración
-al arrancar); usa las variables de entorno de abajo para apuntarlo a tu
-base.
+Requiere una instancia de MongoDB accesible; usa las variables de entorno
+de abajo para apuntarlo a tu base.
 
 ## Variables de entorno
 
 | Variable | Valor por defecto | Uso |
 |---|---|---|
-| `DB_HOST` | `localhost` | Host de PostgreSQL |
-| `DB_PORT` | `5432` | Puerto de PostgreSQL |
-| `DB_NAME` | `techcup_notifications` | Nombre de la base de datos |
-| `DB_USER` | `postgres` | Usuario de la base de datos |
-| `DB_PASSWORD` | `postgres` | Contraseña de la base de datos |
+| `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` | Connection string de MongoDB (compatible con Azure Cosmos DB for MongoDB vCore) |
 | `SERVER_PORT` | `8083` | Puerto HTTP del servicio (coincide con `NOTIFICACIONES_SERVICE_URL` por defecto en `am-matches-service`) |
 | `INTERNAL_API_KEY` | `local-dev-internal-key` | API key compartida para autenticar los webhooks de eventos servicio-a-servicio |
 

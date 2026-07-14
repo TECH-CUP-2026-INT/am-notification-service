@@ -33,14 +33,14 @@ ejemplo) sin tocar la lógica de negocio: solo cambiaría el `controller`.
 - **Seguridad de los webhooks**: header `X-Internal-Api-Key` (configurable vía
   `INTERNAL_API_KEY`), porque esos endpoints reciben POSTs servicio-a-servicio sin JWT
   de usuario.
-- **Persistencia**: PostgreSQL + Flyway (`db/migration/V1__init_schema.sql`), con
-  `ddl-auto: validate` (el esquema lo gobierna la migración, no Hibernate).
+- **Persistencia**: MongoDB (Spring Data MongoDB), sin migraciones versionadas — los
+  índices se crean automáticamente al arrancar (`auto-index-creation: true`).
 
 ## Modelo de datos
 
-Tabla `notification`: `id`, `recipient_id` (destinatario), `type` (tipo de evento,
-enum explícito — pensado para accesibilidad, no solo color/ícono), `message`, `reference_id`
-(id del recurso relacionado, para que el frontend navegue), `is_read`, `created_at`, `read_at`.
+Colección `notification`: `id`, `recipientId` (destinatario), `type` (tipo de evento,
+enum explícito — pensado para accesibilidad, no solo color/ícono), `message`, `referenceId`
+(id del recurso relacionado, para que el frontend navegue), `read`, `createdAt`, `readAt`.
 
 `NotificationType` cubre los 8 requerimientos funcionales con 13 valores (se separan
 aprobada/rechazada/cancelada y programado/reprogramado/cancelado en constantes
@@ -83,7 +83,7 @@ Variables de entorno (con default para desarrollo local):
 
 | Variable | Default |
 |---|---|
-| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `localhost` / `5432` / `techcup_notifications` / `postgres` / `postgres` |
+| `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` |
 | `SERVER_PORT` | `8083` (coincide con el `NOTIFICACIONES_SERVICE_URL` por defecto que ya usa `service-match`) |
 | `INTERNAL_API_KEY` | `local-dev-internal-key` |
 
@@ -95,13 +95,13 @@ Variables de entorno (con default para desarrollo local):
 docker compose up --build
 ```
 
-Levanta Postgres (con healthcheck) y la app ya conectada a él. Flyway aplica la
-migración automáticamente al arrancar. Cuando ambos contenedores estén arriba:
+Levanta MongoDB (con healthcheck) y la app ya conectada a él. Los índices se crean
+automáticamente al arrancar. Cuando ambos contenedores estén arriba:
 
 - Swagger UI: http://localhost:8083/swagger-ui/index.html
 - Health: http://localhost:8083/actuator/health
-- Postgres queda expuesto en `localhost:5433` (no `5432`, para no chocar con otro
-  Postgres que ya tengas corriendo local) por si quieres conectarte con un cliente.
+- MongoDB queda expuesto en `localhost:27019` (no `27017`, para no chocar con otro
+  Mongo que ya tengas corriendo local) por si quieres conectarte con un cliente.
 
 `docker compose down` para apagar todo; agrega `-v` si además quieres borrar los
 datos persistidos.
@@ -271,9 +271,8 @@ los tres casos de seguridad) contra el stack de Docker antes de escribir esta gu
 ./mvnw spring-boot:run
 ```
 
-Requiere una instancia de PostgreSQL accesible por tu cuenta (Flyway aplica la
-migración al arrancar); usa las variables de entorno de la sección anterior para
-apuntarlo a tu base.
+Requiere una instancia de MongoDB accesible por tu cuenta; usa las variables de
+entorno de la sección anterior para apuntarlo a tu base.
 
 ## Pruebas
 
@@ -285,4 +284,4 @@ Cubre la lógica de negocio clave: construcción de la notificación a partir de
 tipo de evento (un test por listener) y las reglas de `NotificationService`
 (pertenencia del destinatario, idempotencia de "marcar como leída", conteo de no
 leídas). El test de contexto completo (`ServiceNotificationsApplicationTests`)
-requiere una PostgreSQL real disponible, igual que en `service-match`.
+levanta un contenedor MongoDB real vía Testcontainers, igual que en `service-match`.

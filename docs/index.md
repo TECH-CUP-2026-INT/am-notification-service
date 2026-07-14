@@ -28,8 +28,7 @@ iniciativa propia, siempre reacciona a algo que ocurrió en otro servicio.
 | Lenguaje / runtime | Java 21 |
 | Framework | Spring Boot 3.5.6 |
 | Build | Maven |
-| Persistencia | PostgreSQL + Spring Data JPA |
-| Migraciones | Flyway |
+| Persistencia | MongoDB + Spring Data MongoDB |
 | API | Spring Web (REST) + springdoc-openapi |
 | Seguridad | Spring Security (JWT del Gateway para usuarios + API key interna para webhooks) |
 | CI/CD | GitHub Actions (build, test, cobertura, análisis estático, empaquetado, Docker) |
@@ -38,7 +37,7 @@ iniciativa propia, siempre reacciona a algo que ocurrió en otro servicio.
 ## Inicio rápido
 
 ```bash
-# Levanta Postgres y el servicio (Flyway crea el esquema automáticamente)
+# Levanta MongoDB y el servicio (los índices se crean automáticamente)
 docker compose up --build
 ```
 

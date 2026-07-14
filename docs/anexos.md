@@ -67,7 +67,7 @@ Definido en
    omitido en pull requests desde forks.
 7. **Empaquetado** del JAR y publicación como artefacto.
 8. **Dockerización**: solo en eventos `push` a `master`/`qa`.
-9. **Despliegue**: a Azure App Service, solo en `push` a `master`.
+9. **Despliegue**: a Azure App Service, solo en `push` a `main`.
 
 ## Referencias
 
@@ -77,7 +77,7 @@ Definido en
   usado para el sitio.
 - [Spring Boot](https://spring.io/projects/spring-boot) — framework del
   servicio.
-- [Flyway](https://flywaydb.org/) — herramienta de migraciones de esquema.
+- [Spring Data MongoDB](https://spring.io/projects/spring-data-mongodb) — acceso a datos sobre MongoDB.
 - [springdoc-openapi](https://springdoc.org/) — generación de la
   especificación OpenAPI y Swagger UI.
 - [JaCoCo](https://www.jacoco.org/jacoco/) — cobertura de pruebas.

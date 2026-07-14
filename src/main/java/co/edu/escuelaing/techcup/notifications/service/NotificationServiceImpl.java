@@ -27,6 +27,7 @@ public class NotificationServiceImpl implements NotificationService {
         notification.setType(command.type());
         notification.setMessage(command.message());
         notification.setReferenceId(command.referenceId());
+        notification.setCreatedAt(Instant.now());
         return notificationRepository.save(notification);
     }
 

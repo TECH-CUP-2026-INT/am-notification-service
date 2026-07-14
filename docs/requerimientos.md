@@ -42,7 +42,7 @@ Notificaciones, contrastados contra la implementación actual.
 | RNF-05 | **Privacidad**: un usuario solo puede consultar y marcar como leídas sus propias notificaciones. |
 | RNF-06 | **Mantenibilidad**: el transporte (hoy REST) está desacoplado de la lógica de negocio detrás de la capa `listener`, para poder reemplazarlo (p. ej. por una cola de eventos) sin tocar `service`. |
 | RNF-07 | **Reproducibilidad del build**: el proyecto debe compilar, probar y empaquetarse de forma determinista vía Maven Wrapper, tanto en local como en CI. |
-| RNF-08 | **Cobertura de pruebas**: al menos 80% de cobertura de línea sobre la lógica de negocio (excluyendo DTOs, entidades JPA y clases de configuración), verificado automáticamente en CI (JaCoCo). |
+| RNF-08 | **Cobertura de pruebas**: al menos 80% de cobertura de línea sobre la lógica de negocio (excluyendo DTOs, entidades de MongoDB y clases de configuración), verificado automáticamente en CI (JaCoCo). |
 
 ## Prerrequisitos técnicos
 
@@ -51,7 +51,7 @@ Para desarrollar y ejecutar el servicio localmente:
 | Herramienta | Versión mínima | Uso |
 |---|---|---|
 | [Java (JDK)](https://adoptium.net/) | 21 | Compilación y ejecución del servicio |
-| [Docker](https://www.docker.com/) / Docker Compose | 24+ | Base de datos PostgreSQL y contenedor de la aplicación |
+| [Docker](https://www.docker.com/) / Docker Compose | 24+ | Base de datos MongoDB y contenedor de la aplicación (también usado por Testcontainers en las pruebas) |
 | [Git](https://git-scm.com/) | 2.x | Control de versiones |
 | Maven Wrapper (`mvnw`, incluido en el repo) | — | No requiere instalación de Maven local |
 
