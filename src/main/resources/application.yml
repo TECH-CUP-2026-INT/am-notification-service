@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: service-notifications
+
+  autoconfigure:
+    # La autenticación real la resuelve JwtClaimsFilter a partir del JWT del Gateway
+    # (o InternalApiKeyFilter para llamadas servicio-a-servicio); no usamos el
+    # UserDetailsService/usuario en memoria por defecto de Spring Security.
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/techcup_notifications}
+      auto-index-creation: true
+
+server:
+  port: ${SERVER_PORT:8083}
+
+techcup:
+  security:
+    internal:
+      # Compartida con los servicios que publican eventos hacia nosotros
+      # (Sanciones, Comunicaciones, Equipos, Inscripción, Agendamiento).
+      api-key: ${INTERNAL_API_KEY:local-dev-internal-key}

@@ -1,0 +1,32 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: techcup-notifications-db
+    ports:
+      # 27019 en el host para no chocar con los otros servicios del workspace
+      # (que usan 27017/27018); el contenedor de la app usa el puerto interno
+      # 27017 vía la red de docker.
+      - "27019:27017"
+    volumes:
+      - techcup-notifications-mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  service-notifications:
+    build: .
+    container_name: techcup-notifications-app
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/techcup_notifications
+      SERVER_PORT: 8083
+      INTERNAL_API_KEY: local-dev-internal-key
+    ports:
+      - "8083:8083"
+
+volumes:
+  techcup-notifications-mongodata:
