@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,11 +82,13 @@ class NotificationServiceImplTest {
         notification.setRead(false);
         UUID notificationId = UUID.randomUUID();
         when(notificationRepository.findById(notificationId)).thenReturn(Optional.of(notification));
+        when(notificationRepository.save(notification)).thenReturn(notification);
 
         Notification result = notificationService.markAsRead(notificationId, recipientId);
 
         assertThat(result.isRead()).isTrue();
         assertThat(result.getReadAt()).isNotNull();
+        verify(notificationRepository).save(notification);
     }
 
     @Test
@@ -101,6 +104,7 @@ class NotificationServiceImplTest {
         Notification result = notificationService.markAsRead(notificationId, recipientId);
 
         assertThat(result.getReadAt()).isEqualTo(originalReadAt);
+        verify(notificationRepository, never()).save(any());
     }
 
     @Test

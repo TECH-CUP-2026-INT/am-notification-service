@@ -59,6 +59,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (!notification.isRead()) {
             notification.setRead(true);
             notification.setReadAt(Instant.now());
+            notification = notificationRepository.save(notification);
         }
         return notification;
     }
