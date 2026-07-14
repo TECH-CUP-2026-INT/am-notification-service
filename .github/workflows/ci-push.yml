@@ -127,7 +127,7 @@ jobs:
         # chequeo se hace en un step normal y se expone como output del job
         # para que el job "deploy" lo lea vía "needs.*.outputs".
         id: check-azure-secret
-        run: echo "present=${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}" >> "$GITHUB_OUTPUT"
+        run: echo "present=${{ secrets.AZURE_CREDENTIALS != '' }}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout del código
         uses: actions/checkout@v4
@@ -173,9 +173,21 @@ jobs:
     environment: production
 
     steps:
-      - name: Desplegar contenedor en Azure App Service
-        uses: azure/webapps-deploy@v3
+      - name: Iniciar sesion en Azure
+        uses: azure/login@v2
         with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          images: ghcr.io/${{ env.IMAGE_NAME }}:main
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Desplegar contenedor en Azure App Service
+        # Se usa Azure CLI en vez de azure/webapps-deploy porque esa action
+        # requiere permisos de management plane (ARM) para actualizar la
+        # imagen del contenedor via el parametro "images", y solo funciona
+        # de forma confiable con un login previo (no basta el publish profile).
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config container set \
+              --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+              --resource-group techup-rg \
+              --container-image-name ghcr.io/${{ env.IMAGE_NAME }}:main
+            az webapp restart --name ${{ secrets.AZURE_WEBAPP_NAME }} --resource-group techup-rg
