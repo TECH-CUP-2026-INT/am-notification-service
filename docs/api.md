@@ -111,12 +111,28 @@ Response `200 OK` (lista de `NotificationResponse`):
 
 Los errores de negocio (notificación no encontrada, acceso denegado a una
 notificación de otro usuario) se manejan de forma centralizada en
-`GlobalExceptionHandler` (`@RestControllerAdvice`) y se devuelven con el DTO
-`ErrorResponse`:
+`infrastructure/in/rest/exception/GlobalExceptionHandler` (`@RestControllerAdvice`) y se
+devuelven con el DTO `ErrorResponse`. Tanto `error` como `message` están siempre en
+español (no se usa el `reasonPhrase` de Spring, que viene en inglés):
 
-| Código | Causa |
-|---|---|
-| `400` | Validación de payload de un webhook (Bean Validation) |
-| `401` | Sin autenticación válida para el endpoint (JWT para usuario, API key para webhook) |
-| `403` | Autenticado con el mecanismo equivocado (p. ej. API key en un endpoint de usuario) |
-| `404` | `NotificationNotFoundException` |
+| Código | Causa | `error` |
+|---|---|---|
+| `400` | Validación de payload de un webhook (Bean Validation) | "Solicitud inválida" |
+| `401` | Sin autenticación válida para el endpoint (JWT para usuario, API key para webhook) | "No autenticado" |
+| `403` | Autenticado con el mecanismo equivocado (p. ej. API key en un endpoint de usuario) | "Acceso denegado" |
+| `404` | `NotificationNotFoundException` | "No encontrado" |
+| `500` | Error inesperado no mapeado explícitamente | "Error interno" |
+
+## Documentación Swagger por endpoint
+
+Cada uno de los 13 endpoints tiene su propia anotación `@Operation`/`@ApiResponse`/ejemplo,
+definida en una interfaz separada del controlador (`infrastructure/in/rest/swagger/*Api.java`,
+implementada por el controller correspondiente) — no hay anotaciones de documentación en los
+controllers mismos.
+
+## Mensajería (RabbitMQ)
+
+Los mismos 9 eventos de la tabla anterior también pueden llegar por RabbitMQ (ver
+[Arquitectura](arquitectura.md#mensajería-rabbitmq) para el detalle de exchanges, colas,
+DLQ y versionado). Ambos transportes invocan el mismo puerto de dominio, por lo que el
+resultado es idéntico sin importar por cuál llegó el evento.

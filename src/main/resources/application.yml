@@ -14,6 +14,15 @@ spring:
       uri: ${MONGODB_URI:mongodb://localhost:27017/techcup_notifications}
       auto-index-creation: true
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5674}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    ssl:
+      enabled: ${RABBITMQ_SSL_ENABLED:false}
+
 server:
   port: ${SERVER_PORT:8083}
 
@@ -23,3 +32,14 @@ techcup:
       # Compartida con los servicios que publican eventos hacia nosotros
       # (Sanciones, Comunicaciones, Equipos, Inscripción, Agendamiento).
       api-key: ${INTERNAL_API_KEY:local-dev-internal-key}
+  messaging:
+    # Transporte en migración: los mismos 9 eventos siguen llegando también por REST
+    # (ver infrastructure/in/rest/controller/events) mientras cada equipo productor
+    # migra a publicar directamente en estas colas.
+    exchange: notificaciones.eventos
+    dlx-exchange: notificaciones.eventos.dlx
+    # Exchange topic compartido en CloudAMQP entre todos los microservicios de TechCup
+    # (ver docs/arquitectura.md#rabbitmq-cloudamqp-compartido). Solo sanciones/partidos
+    # usan hoy este exchange; el resto de eventos sigue en el exchange local de arriba
+    # hasta que se confirme el prefijo techcup.* de cada dominio productor.
+    shared-exchange: ${RABBITMQ_SHARED_EXCHANGE:techcup.exchange}

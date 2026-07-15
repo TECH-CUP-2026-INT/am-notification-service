@@ -15,14 +15,18 @@ cd am-notification-service
 docker compose up --build
 ```
 
-Levanta MongoDB (con healthcheck) y la app ya conectada a él. Los índices se
-crean automáticamente al arrancar. Cuando ambos contenedores estén
-arriba:
+Levanta MongoDB y RabbitMQ (ambos con healthcheck) y la app ya conectada a
+ellos. Los índices y las colas se crean automáticamente al arrancar. Cuando
+los tres contenedores estén arriba:
 
 - Swagger UI: [http://localhost:8083/swagger-ui/index.html](http://localhost:8083/swagger-ui/index.html)
 - Health: [http://localhost:8083/actuator/health](http://localhost:8083/actuator/health)
 - MongoDB queda expuesto en el host en `27019` (no `27017`, para no chocar con
   el Mongo de `am-matches-service` ni con otro Mongo local).
+- RabbitMQ (local, para desarrollo/tests) queda expuesto en `5674` (AMQP) y
+  `15674` (panel de administración, usuario/clave `guest`/`guest`). Este
+  RabbitMQ local es independiente del broker compartido de CloudAMQP — ver
+  [Arquitectura](arquitectura.md#rabbitmq-cloudamqp-compartido).
 
 `docker compose down` para apagar todo; agrega `-v` si además quieres borrar
 los datos persistidos.
@@ -33,8 +37,10 @@ los datos persistidos.
 ./mvnw spring-boot:run
 ```
 
-Requiere una instancia de MongoDB accesible; usa las variables de entorno
-de abajo para apuntarlo a tu base.
+Requiere una instancia de MongoDB y una de RabbitMQ accesibles; usa las
+variables de entorno de abajo para apuntarlo a tu infraestructura (`docker
+compose up -d mongo rabbitmq` si solo quieres la infraestructura y correr la
+app aparte con Maven).
 
 ## Variables de entorno
 
@@ -43,8 +49,40 @@ de abajo para apuntarlo a tu base.
 | `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` | Connection string de MongoDB (compatible con Azure Cosmos DB for MongoDB vCore) |
 | `SERVER_PORT` | `8083` | Puerto HTTP del servicio (coincide con `NOTIFICACIONES_SERVICE_URL` por defecto en `am-matches-service`) |
 | `INTERNAL_API_KEY` | `local-dev-internal-key` | API key compartida para autenticar los webhooks de eventos servicio-a-servicio |
+| `RABBITMQ_HOST` | `localhost` | Host del broker RabbitMQ |
+| `RABBITMQ_PORT` | `5674` en local (`5672` dentro de docker-compose) | Puerto AMQP |
+| `RABBITMQ_USERNAME` | `guest` | Usuario del broker |
+| `RABBITMQ_PASSWORD` | `guest` | Contraseña del broker — **en despliegue nunca va en `application.yml` ni en `docker-compose.yml`**, se inyecta como secreto de la plataforma. Ver [Arquitectura](arquitectura.md#rabbitmq-cloudamqp-compartido) |
+| `RABBITMQ_VHOST` | `/` | Virtual host del broker |
+| `RABBITMQ_SSL_ENABLED` | `false` | `true` en CloudAMQP (TLS obligatorio en el puerto 5671) |
+| `RABBITMQ_SHARED_EXCHANGE` | `techcup.exchange` | Nombre del exchange topic compartido entre todos los microservicios de TechCup |
 
 Estas variables se resuelven en `src/main/resources/application.yml`.
+
+### Conectarse al RabbitMQ compartido de CloudAMQP (staging/producción)
+
+Para apuntar el servicio al broker compartido en vez del RabbitMQ local de
+`docker-compose.yml`, exporta:
+
+```bash
+export RABBITMQ_HOST=<host de CloudAMQP — pídelo al equipo por canal privado>
+export RABBITMQ_PORT=5671
+export RABBITMQ_USERNAME=<usuario de CloudAMQP — pídelo al equipo por canal privado>
+export RABBITMQ_VHOST=<vhost de CloudAMQP — pídelo al equipo por canal privado>
+export RABBITMQ_SSL_ENABLED=true
+export RABBITMQ_PASSWORD=<pídesela a Juan David Rangel Jiménez por privado>
+```
+
+Ninguno de estos valores (host, usuario, vhost ni contraseña) **está en este
+repositorio ni debe llegar a estarlo** (ni en `application.yml`, ni en
+`docker-compose.yml`, ni en un commit, ni en un mensaje de chat público) —
+al ser un repositorio público, publicar aquí los datos de conexión del
+broker compartido facilita ataques de fuerza bruta contra la contraseña. Se
+piden por canal privado del equipo y se inyectan solo como variables de
+entorno o secretos de la plataforma de despliegue (GitHub Actions
+secret, Azure App Service configuration, etc.). Local (`docker compose up`)
+sigue usando el RabbitMQ propio del proyecto y nunca necesita esta
+contraseña.
 
 ## Probar los endpoints protegidos
 

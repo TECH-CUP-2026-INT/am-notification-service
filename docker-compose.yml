@@ -15,16 +15,36 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: techcup-notifications-rabbitmq
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   service-notifications:
     build: .
     container_name: techcup-notifications-app
     depends_on:
       mongo:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       MONGODB_URI: mongodb://mongo:27017/techcup_notifications
       SERVER_PORT: 8083
       INTERNAL_API_KEY: local-dev-internal-key
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      RABBITMQ_VHOST: /
+      RABBITMQ_SSL_ENABLED: "false"
     ports:
       - "8083:8083"
 
