@@ -86,7 +86,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private static final class SpaCsrfTokenRequestHandler extends CsrfTokenRequestAttributeHandler {
+    static final class SpaCsrfTokenRequestHandler extends CsrfTokenRequestAttributeHandler {
         private final CsrfTokenRequestHandler delegate = new XorCsrfTokenRequestAttributeHandler();
 
         @Override
@@ -103,7 +103,7 @@ public class SecurityConfig {
         }
     }
 
-    private static final class CsrfCookieFilter extends OncePerRequestFilter {
+    static final class CsrfCookieFilter extends OncePerRequestFilter {
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
                 throws ServletException, IOException {

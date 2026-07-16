@@ -174,7 +174,10 @@
 						<exclude>co/edu/escuelaing/techcup/notifications/ServiceNotificationsApplication.class</exclude>
 						<exclude>co/edu/escuelaing/techcup/notifications/dto/**/*</exclude>
 						<exclude>co/edu/escuelaing/techcup/notifications/entity/**/*</exclude>
-						<exclude>co/edu/escuelaing/techcup/notifications/config/**/*</exclude>
+						<!-- Solo wiring declarativo de beans, sin lógica propia. SecurityConfig
+						     sí se mide: contiene la lógica real del manejo de tokens CSRF. -->
+						<exclude>co/edu/escuelaing/techcup/notifications/config/OpenApiConfig.class</exclude>
+						<exclude>co/edu/escuelaing/techcup/notifications/config/InternalApiKeyProperties.class</exclude>
 					</excludes>
 					<rules>
 						<rule>
