@@ -12,7 +12,7 @@ La especificación OpenAPI cruda está disponible en `/v3/api-docs`.
 Este servicio expone **dos** esquemas de seguridad distintos, ambos
 disponibles desde el botón **Authorize** de Swagger:
 
-- **`internalApiKey`** (header `X-Internal-Api-Key`): para los 9 webhooks de
+- **`internalApiKey`** (header `X-Internal-Api-Key`): para los 10 webhooks de
   eventos servicio-a-servicio.
 - **`bearerAuth`** (header `Authorization: Bearer <jwt>`): para los
   endpoints consultados por el usuario final. El JWT no necesita firma
@@ -37,6 +37,7 @@ autorizarte en Swagger.
 | Origen | Endpoint | Estado del contrato |
 |---|---|---|
 | Servicio de Partidos (`am-matches-service`) | `POST /api/notificaciones/sanciones` | ✅ Confirmado |
+| Servicio de Torneos (`mk-tournament-service`) | `POST /api/notificaciones/sanciones-conducta` | ✅ Confirmado |
 | Servicio de Comunicaciones | `POST /api/notificaciones/mensajes` | ⚠️ Propuesto |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Propuesto |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Propuesto |
@@ -66,6 +67,24 @@ para el detalle de qué falta de cada lado.
 
 Responde `202 Accepted` sin cuerpo — el procesamiento (crear la
 notificación) ocurre de forma independiente del llamador.
+
+## Ejemplo: webhook de sanción por conducta (contrato confirmado)
+
+`POST /api/notificaciones/sanciones-conducta`
+
+```json
+{
+  "playerId": "33333333-3333-3333-3333-333333333333",
+  "matchesSuspended": 2,
+  "reason": "Agresión verbal a un árbitro tras la finalización del partido.",
+  "occurredAt": "2026-07-15T20:00:00Z"
+}
+```
+
+A diferencia del webhook de tarjetas, este no está ligado a un partido en
+vivo: lo dispara el Servicio de Torneos cuando el Organizador aplica una
+sanción por conducta (`SanctionType.CONDUCT`), no el Servicio de Partidos.
+Responde `202 Accepted` sin cuerpo.
 
 ## Ejemplo: webhook de cesión de capitanía (contrato propuesto)
 

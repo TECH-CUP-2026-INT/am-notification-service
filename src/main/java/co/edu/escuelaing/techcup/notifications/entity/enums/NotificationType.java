@@ -7,6 +7,7 @@ package co.edu.escuelaing.techcup.notifications.entity.enums;
  */
 public enum NotificationType {
     SANCION_TARJETAS,
+    SANCION_CONDUCTA,
     NUEVO_MENSAJE_CHAT,
     SOLICITUD_VINCULACION_EQUIPO,
     VINCULACION_ACEPTADA,

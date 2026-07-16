@@ -36,6 +36,7 @@ public class SecurityConfig {
                         // autenticado podría falsificar eventos de otros servicios.
                         .requestMatchers(HttpMethod.POST,
                                 "/api/notificaciones/sanciones",
+                                "/api/notificaciones/sanciones-conducta",
                                 "/api/notificaciones/mensajes",
                                 "/api/notificaciones/equipos/**",
                                 "/api/notificaciones/inscripciones/**",
