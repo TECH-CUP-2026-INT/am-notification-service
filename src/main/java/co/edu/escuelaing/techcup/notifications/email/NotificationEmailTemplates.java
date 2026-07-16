@@ -17,6 +17,7 @@ public final class NotificationEmailTemplates {
     public static String subjectFor(NotificationType type) {
         return switch (type) {
             case SANCION_TARJETAS -> "Sanción por tarjetas";
+            case SANCION_CONDUCTA -> "Sanción por conducta";
             case NUEVO_MENSAJE_CHAT -> "Nuevo mensaje";
             case SOLICITUD_VINCULACION_EQUIPO -> "Solicitud de vinculación a equipo";
             case VINCULACION_ACEPTADA -> "Tu solicitud de vinculación fue aceptada";
