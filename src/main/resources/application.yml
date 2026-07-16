@@ -45,3 +45,22 @@ techcup:
     # (útil para probar el envío real end-to-end en desarrollo); si se deja vacía,
     # el envío de correo se omite (se sigue creando la notificación in-app igual).
     test-recipient: ${NOTIFICATION_TEST_EMAIL:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+
+logging:
+  level:
+    co.edu.escuelaing.techcup.notifications: INFO
