@@ -1,0 +1,39 @@
+name: Sonar - Resolve reviewed issues (one-off)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Marcar como Won't Fix los TODOs ya revisados manualmente
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          set -e
+
+          resolve_issue() {
+            local issue_key="$1"
+            local comment="$2"
+
+            echo "Comentando y resolviendo $issue_key..."
+            curl -sf -X POST "$SONAR_HOST_URL/api/issues/add_comment" \
+              -H "Authorization: Bearer $SONAR_TOKEN" \
+              --data-urlencode "issue=$issue_key" \
+              --data-urlencode "text=$comment" > /dev/null
+
+            curl -sf -X POST "$SONAR_HOST_URL/api/issues/do_transition" \
+              -H "Authorization: Bearer $SONAR_TOKEN" \
+              --data-urlencode "issue=$issue_key" \
+              --data-urlencode "transition=wontfix" > /dev/null
+            echo "$issue_key resuelto."
+          }
+
+          COMMENT="TODO real: decision de negocio pendiente de confirmar con otro equipo (Torneos/Partidos/Servicio de Usuarios), no un descuido de codigo. Se deja documentado en el codigo a proposito; se acepta como deuda tecnica rastreada hasta que el otro equipo confirme el contrato."
+
+          resolve_issue "AZ9rgC9WBVJKybAdBQYE" "$COMMENT"
+          resolve_issue "AZ9rgC9pBVJKybAdBQYG" "$COMMENT"
+          resolve_issue "AZ9rgC8hBVJKybAdBQX-" "$COMMENT"
+          resolve_issue "AZ9rgC8ZBVJKybAdBQX9" "$COMMENT"
