@@ -4,6 +4,8 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +22,15 @@ import org.springframework.context.annotation.Configuration;
  * un mensaje — solo {@code tournamentId}/{@code playerId} — así que no hay todavía un
  * criterio para traducirlos a una notificación real. Falta esa definición de producto
  * antes de crear notificaciones a partir de estos eventos.
+ *
+ * <p>{@code ignoreDeclarationExceptions(true)} en el RabbitAdmin: por defecto Spring AMQP
+ * declara el exchange/colas/bindings contra el broker real al arrancar la aplicación, y si
+ * esa declaración falla (CloudAMQP caído, credencial no configurada en este entorno), tumba
+ * todo el ApplicationContext — no solo la parte de Rabbit. Este servicio recibe sus
+ * notificaciones principalmente por los webhooks REST (ver controller/events), que no
+ * dependen de RabbitMQ, así que un broker no disponible nunca debe impedir que el servicio
+ * arranque (mismo criterio "best-effort" que el resto de integraciones salientes del
+ * ecosistema, ej. RestSanctionNotifier en am-matches-service).
  */
 @Configuration
 public class RabbitMQConfig {
@@ -58,5 +69,12 @@ public class RabbitMQConfig {
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
+    }
+
+    @Bean
+    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        RabbitAdmin admin = new RabbitAdmin(connectionFactory);
+        admin.setIgnoreDeclarationExceptions(true);
+        return admin;
     }
 }
