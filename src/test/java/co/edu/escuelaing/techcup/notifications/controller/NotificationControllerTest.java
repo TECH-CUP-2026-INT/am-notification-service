@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -101,16 +102,29 @@ class NotificationControllerTest {
         when(notificationService.markAsRead(notificationId, userId)).thenReturn(notification);
 
         mockMvc.perform(patch("/api/notificaciones/{id}/leer", notificationId)
-                        .header("Authorization", "Bearer " + jwtFor(userId)))
+                        .header("Authorization", "Bearer " + jwtFor(userId))
+                        .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.read").value(true));
+    }
+
+    @Test
+    void markAsRead_withoutCsrfToken_isRejected() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID notificationId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/notificaciones/{id}/leer", notificationId)
+                        .header("Authorization", "Bearer " + jwtFor(userId)))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void markAllAsRead_withValidJwt_returnsNoContent() throws Exception {
         UUID userId = UUID.randomUUID();
 
-        mockMvc.perform(patch("/api/notificaciones/leer-todas").header("Authorization", "Bearer " + jwtFor(userId)))
+        mockMvc.perform(patch("/api/notificaciones/leer-todas")
+                        .header("Authorization", "Bearer " + jwtFor(userId))
+                        .with(csrf()))
                 .andExpect(status().isNoContent());
 
         verify(notificationService).markAllAsRead(userId);

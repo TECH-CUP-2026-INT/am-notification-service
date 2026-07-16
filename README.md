@@ -32,7 +32,14 @@ ejemplo) sin tocar la lógica de negocio: solo cambiaría el `controller`.
   fuera del alcance de este repo.
 - **Seguridad de los webhooks**: header `X-Internal-Api-Key` (configurable vía
   `INTERNAL_API_KEY`), porque esos endpoints reciben POSTs servicio-a-servicio sin JWT
-  de usuario.
+  de usuario. Están exentos de CSRF (ver abajo): no los origina un navegador.
+- **CSRF en los endpoints de usuario**: `PATCH /api/notificaciones/{id}/leer` y
+  `PATCH /api/notificaciones/leer-todas` exigen el header `X-XSRF-TOKEN`. El servicio
+  es `STATELESS` (sin sesión de servidor), así que el token viaja en una cookie
+  (`XSRF-TOKEN`, `HttpOnly=false`) que el frontend debe leer con JS y reenviar como
+  header en cada `PATCH`/`POST`/`PUT`/`DELETE` — es el patrón que Spring Security
+  recomienda para SPAs sin sesión. **El frontend necesita este cambio** para que
+  "marcar como leída" siga funcionando tras este commit.
 - **Persistencia**: MongoDB (Spring Data MongoDB), sin migraciones versionadas — los
   índices se crean automáticamente al arrancar (`auto-index-creation: true`).
 
@@ -235,11 +242,10 @@ Con el `bearerAuth` ya puesto:
 - **`GET /api/notificaciones`** → deberías ver las 8 notificaciones que acabas de
   crear, la más reciente primero. Prueba también con `?leidas=false`.
 - **`GET /api/notificaciones/no-leidas/conteo`** → `{"count": 8}`.
-- **`PATCH /api/notificaciones/{id}/leer`** → copia un `id` de la respuesta anterior,
-  pégalo en el path param y ejecútalo; el campo `read` debe pasar a `true` y `readAt`
-  se llena.
-- **`PATCH /api/notificaciones/leer-todas`** → marca el resto; después,
-  `no-leidas/conteo` debe dar `{"count": 0}`.
+- **`PATCH /api/notificaciones/{id}/leer`** y **`PATCH /api/notificaciones/leer-todas`**
+  requieren además el header CSRF `X-XSRF-TOKEN` (ver sección de CSRF más abajo) —
+  Swagger UI no lo agrega solo, así que estos dos no se pueden probar con el botón
+  **Try it out** sin ese paso manual.
 
 #### 4. Confirmar que la seguridad está bloqueando lo que debe
 
