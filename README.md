@@ -78,13 +78,13 @@ destinatario). El equipo de Partidos además deberá agregar el header
 
 ## Configuración
 
-Variables de entorno (con default para desarrollo local):
+Variables de entorno:
 
 | Variable | Default |
 |---|---|
 | `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` |
 | `SERVER_PORT` | `8083` (coincide con el `NOTIFICACIONES_SERVICE_URL` por defecto que ya usa `service-match`) |
-| `INTERNAL_API_KEY` | `local-dev-internal-key` |
+| `INTERNAL_API_KEY` | *(obligatoria, sin default — el servicio no arranca sin ella; `docker-compose.yml` la fija en `local-dev-internal-key` para desarrollo local)* |
 
 ## Cómo correrlo
 
@@ -117,8 +117,8 @@ desde el botón **Authorize** (candado arriba a la derecha) sin tocar Postman.
 
 En el modal de **Authorize** vas a ver dos candados:
 
-- **`internalApiKey`**: pega `local-dev-internal-key` (es el valor por defecto de
-  `INTERNAL_API_KEY` en `docker-compose.yml`). Con esto quedan habilitados los 8
+- **`internalApiKey`**: pega `local-dev-internal-key` (es el valor de
+  `INTERNAL_API_KEY` fijado en `docker-compose.yml`). Con esto quedan habilitados los 8
   webhooks de eventos.
 - **`bearerAuth`**: como este servicio confía en que el API Gateway ya validó la firma
   (`JwtClaimsFilter` solo lee el claim `sub`, no la reverifica), **no necesitas un JWT

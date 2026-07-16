@@ -42,7 +42,7 @@ de abajo para apuntarlo a tu base.
 |---|---|---|
 | `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` | Connection string de MongoDB (compatible con Azure Cosmos DB for MongoDB vCore) |
 | `SERVER_PORT` | `8083` | Puerto HTTP del servicio (coincide con `NOTIFICACIONES_SERVICE_URL` por defecto en `am-matches-service`) |
-| `INTERNAL_API_KEY` | `local-dev-internal-key` | API key compartida para autenticar los webhooks de eventos servicio-a-servicio |
+| `INTERNAL_API_KEY` | *(obligatoria, sin default)* | API key compartida para autenticar los webhooks de eventos servicio-a-servicio. El servicio no arranca sin ella. En `docker-compose.yml` se fija en `local-dev-internal-key` para desarrollo local |
 
 Estas variables se resuelven en `src/main/resources/application.yml`.
 
@@ -51,8 +51,8 @@ Estas variables se resuelven en `src/main/resources/application.yml`.
 Este servicio expone dos esquemas de seguridad distintos en Swagger, ambos
 disponibles desde el botón **Authorize**:
 
-- **`internalApiKey`**: pega el valor de `INTERNAL_API_KEY` (por defecto
-  `local-dev-internal-key`). Habilita los 8 webhooks de eventos.
+- **`internalApiKey`**: pega el valor configurado en `INTERNAL_API_KEY` (en local,
+  `local-dev-internal-key` según `docker-compose.yml`). Habilita los 8 webhooks de eventos.
 - **`bearerAuth`**: como este servicio confía en que el API Gateway ya
   validó la firma (`JwtClaimsFilter` solo lee el claim `sub`, no la
   reverifica), no necesitas un JWT real firmado para probar en local.

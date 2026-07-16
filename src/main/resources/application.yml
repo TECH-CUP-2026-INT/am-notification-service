@@ -51,7 +51,9 @@ techcup:
     internal:
       # Compartida con los servicios que publican eventos hacia nosotros
       # (Sanciones, Comunicaciones, Equipos, Inscripción, Agendamiento).
-      api-key: ${INTERNAL_API_KEY:local-dev-internal-key}
+      # Sin valor por defecto a propósito: si falta la variable de entorno,
+      # el arranque debe fallar en vez de exponer una clave conocida.
+      api-key: ${INTERNAL_API_KEY}
 
   email:
     from: ${MAIL_FROM:no-reply@techcup.com}
