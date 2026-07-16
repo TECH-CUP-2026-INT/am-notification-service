@@ -84,7 +84,6 @@ confirme su contrato:
 | Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Propuesto |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/capitania` | ⚠️ Propuesto |
 | Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/comprobante` | ⚠️ Propuesto |
 | Servicio de Agendamiento / Torneos | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
 
 Los payloads propuestos están documentados en el Javadoc de cada clase en

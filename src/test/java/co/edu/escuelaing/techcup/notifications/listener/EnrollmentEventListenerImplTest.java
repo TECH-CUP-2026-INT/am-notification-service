@@ -3,7 +3,6 @@ package co.edu.escuelaing.techcup.notifications.listener;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
-import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentProofReceivedEvent;
 import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentStatus;
 import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentStatusChangedEvent;
 import co.edu.escuelaing.techcup.notifications.entity.enums.NotificationType;
@@ -75,19 +74,5 @@ class EnrollmentEventListenerImplTest {
 
         verify(notificationService).create(commandCaptor.capture());
         assertThat(commandCaptor.getValue().type()).isEqualTo(NotificationType.INSCRIPCION_CANCELADA);
-    }
-
-    @Test
-    void proofReceived_buildsPendingReviewNotification() {
-        EnrollmentProofReceivedEvent event = new EnrollmentProofReceivedEvent(
-                enrollmentId, UUID.randomUUID(), recipientId, "https://storage/comprobante.pdf", Instant.now());
-
-        listener.onProofReceived(event);
-
-        verify(notificationService).create(commandCaptor.capture());
-        CreateNotificationCommand command = commandCaptor.getValue();
-        assertThat(command.type()).isEqualTo(NotificationType.INSCRIPCION_COMPROBANTE_RECIBIDO);
-        assertThat(command.referenceId()).isEqualTo(enrollmentId);
-        assertThat(command.message()).containsIgnoringCase("pendiente");
     }
 }

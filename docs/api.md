@@ -44,7 +44,6 @@ autorizarte en Swagger.
 | Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Propuesto |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/capitania` | ⚠️ Propuesto |
 | Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/comprobante` | ⚠️ Propuesto |
 | Servicio de Agendamiento | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
 
 Ver [Arquitectura](arquitectura.md#estado-de-las-integraciones-entrantes)

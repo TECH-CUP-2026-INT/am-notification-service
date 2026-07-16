@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import co.edu.escuelaing.techcup.notifications.config.InternalApiKeyProperties;
 import co.edu.escuelaing.techcup.notifications.config.SecurityConfig;
-import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentProofReceivedEvent;
 import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentStatus;
 import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentStatusChangedEvent;
 import co.edu.escuelaing.techcup.notifications.exception.GlobalExceptionHandler;
@@ -59,20 +58,6 @@ class EnrollmentEventControllerTest {
     }
 
     @Test
-    void receiveProofReceived_withValidInternalApiKey_delegatesToListenerAndReturns202() throws Exception {
-        EnrollmentProofReceivedEvent event = new EnrollmentProofReceivedEvent(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "https://example.com/comprobante.pdf", Instant.now());
-
-        mockMvc.perform(post("/api/notificaciones/inscripciones/comprobante")
-                        .header(InternalApiKeyFilter.HEADER_NAME, "test-internal-key")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(event)))
-                .andExpect(status().isAccepted());
-
-        verify(enrollmentEventListener).onProofReceived(any(EnrollmentProofReceivedEvent.class));
-    }
-
-    @Test
     void receiveStatusChanged_withoutAnyCredentials_isRejected() throws Exception {
         EnrollmentStatusChangedEvent event = new EnrollmentStatusChangedEvent(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), EnrollmentStatus.APROBADA, null, Instant.now());
@@ -81,17 +66,6 @@ class EnrollmentEventControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(event)))
                 .andExpect(status().isForbidden());
-
-        verifyNoInteractions(enrollmentEventListener);
-    }
-
-    @Test
-    void receiveProofReceived_invalidBody_returnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/notificaciones/inscripciones/comprobante")
-                        .header(InternalApiKeyFilter.HEADER_NAME, "test-internal-key")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
 
         verifyNoInteractions(enrollmentEventListener);
     }

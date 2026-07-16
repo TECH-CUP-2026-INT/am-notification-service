@@ -1,6 +1,5 @@
 package co.edu.escuelaing.techcup.notifications.listener;
 
-import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentProofReceivedEvent;
 import co.edu.escuelaing.techcup.notifications.dto.event.EnrollmentStatusChangedEvent;
 import co.edu.escuelaing.techcup.notifications.entity.enums.NotificationType;
 import co.edu.escuelaing.techcup.notifications.service.CreateNotificationCommand;
@@ -34,14 +33,5 @@ public class EnrollmentEventListenerImpl implements EnrollmentEventListener {
 
         notificationService.create(new CreateNotificationCommand(
                 event.recipientId(), type, message, event.enrollmentId()));
-    }
-
-    @Override
-    public void onProofReceived(EnrollmentProofReceivedEvent event) {
-        String message = "Recibimos el comprobante de tu inscripción. "
-                + "Un organizador la revisará pronto (estado: pendiente).";
-
-        notificationService.create(new CreateNotificationCommand(
-                event.recipientId(), NotificationType.INSCRIPCION_COMPROBANTE_RECIBIDO, message, event.enrollmentId()));
     }
 }

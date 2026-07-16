@@ -68,7 +68,6 @@ semánticamente inequívoco para un lector de pantalla).
 | Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Propuesto |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Propuesto |
 | Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/comprobante` | ⚠️ Propuesto |
 | Servicio de Agendamiento | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
 
 Los payloads propuestos están documentados en el Javadoc de cada clase en
@@ -212,17 +211,6 @@ el mismo historial. Todos deben responder `202 Accepted`.
   "newStatus": "APROBADA",
   "reason": null,
   "occurredAt": "2026-07-11T20:00:00Z"
-}
-```
-
-**`POST /api/notificaciones/inscripciones/comprobante`**
-```json
-{
-  "enrollmentId": "d2222222-2222-2222-2222-222222222222",
-  "teamId": "b1111111-1111-1111-1111-111111111111",
-  "recipientId": "33333333-3333-3333-3333-333333333333",
-  "proofUrl": "https://storage.techcup.co/comprobantes/d2222222.pdf",
-  "receivedAt": "2026-07-11T20:00:00Z"
 }
 ```
 

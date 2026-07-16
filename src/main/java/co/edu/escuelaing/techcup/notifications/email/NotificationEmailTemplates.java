@@ -26,7 +26,6 @@ public final class NotificationEmailTemplates {
             case INSCRIPCION_APROBADA -> "Inscripción aprobada";
             case INSCRIPCION_RECHAZADA -> "Inscripción rechazada";
             case INSCRIPCION_CANCELADA -> "Inscripción cancelada";
-            case INSCRIPCION_COMPROBANTE_RECIBIDO -> "Comprobante de inscripción recibido";
             case PARTIDO_PROGRAMADO -> "Partido programado";
             case PARTIDO_REPROGRAMADO -> "Partido reprogramado";
             case PARTIDO_CANCELADO -> "Partido cancelado";
