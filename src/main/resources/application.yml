@@ -26,6 +26,18 @@ spring:
           starttls:
             enable: true
 
+  # CloudAMQP compartido por todo el ecosistema TechCup (mismo broker que usan
+  # Torneos y Estadísticas). RABBITMQ_PASS nunca debe quedar en este archivo:
+  # solo se define como variable de entorno / secreto de despliegue.
+  rabbitmq:
+    host: toucan.lmq.cloudamqp.com
+    port: 5671
+    username: exdntvvm
+    password: ${RABBITMQ_PASS:}
+    virtual-host: exdntvvm
+    ssl:
+      enabled: true
+
 server:
   port: ${SERVER_PORT:8083}
 
