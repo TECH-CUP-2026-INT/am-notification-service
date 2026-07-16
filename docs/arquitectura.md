@@ -77,6 +77,7 @@ confirme su contrato:
 | Origen | Endpoint | Estado |
 |---|---|---|
 | **Servicio de Partidos** (`am-matches-service`, propio de astromerge) | `POST /api/notificaciones/sanciones` | ✅ **Confirmado y verificado end-to-end** — `RestSanctionNotifier` en matches-service envía el header `X-Internal-Api-Key` en cada llamada (corregido en esta auditoría; antes no lo enviaba y la llamada fallaba con `401`) |
+| Servicio de Torneos (`mk-tournament-service`) | `POST /api/notificaciones/sanciones-conducta` | ✅ **Confirmado** — cubre la sanción por conducta (`SanctionType.CONDUCT`): el Organizador decide, después del hecho, cuántos partidos se suspende a un jugador; no está ligada a un partido en vivo, a diferencia de `PlayerSanctionedEvent`. `SanctionNotificationAdapter` (Feign) en Torneos solo llama a este endpoint para CONDUCT — las sanciones automáticas (RED_CARD, YELLOW_CARD_ACCUMULATION) las sigue notificando exclusivamente el Servicio de Partidos, para no duplicar el aviso al jugador |
 | Servicio de Comunicaciones | `POST /api/notificaciones/mensajes` | ⚠️ Propuesto — contrato definido de este lado, pendiente de que el equipo dueño lo confirme e implemente el productor |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Propuesto |
 | Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Propuesto |
