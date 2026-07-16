@@ -14,6 +14,18 @@ spring:
       uri: ${MONGODB_URI:mongodb://localhost:27017/techcup_notifications}
       auto-index-creation: true
 
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 server:
   port: ${SERVER_PORT:8083}
 
@@ -23,3 +35,13 @@ techcup:
       # Compartida con los servicios que publican eventos hacia nosotros
       # (Sanciones, Comunicaciones, Equipos, Inscripción, Agendamiento).
       api-key: ${INTERNAL_API_KEY:local-dev-internal-key}
+
+  email:
+    from: ${MAIL_FROM:no-reply@techcup.com}
+    # TODO: reemplazar por una consulta real al Servicio de Usuarios (p. ej. GET
+    # /usuarios/{id}) una vez que exponga el correo del destinatario — hoy ningún
+    # servicio del org expone esa consulta. Mientras tanto, si se define esta
+    # variable, TODAS las notificaciones envían su correo a esta única dirección
+    # (útil para probar el envío real end-to-end en desarrollo); si se deja vacía,
+    # el envío de correo se omite (se sigue creando la notificación in-app igual).
+    test-recipient: ${NOTIFICATION_TEST_EMAIL:}

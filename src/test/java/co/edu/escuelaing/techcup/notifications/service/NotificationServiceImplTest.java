@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import co.edu.escuelaing.techcup.notifications.email.NotificationEmailNotifier;
 import co.edu.escuelaing.techcup.notifications.entity.Notification;
 import co.edu.escuelaing.techcup.notifications.entity.enums.NotificationType;
 import co.edu.escuelaing.techcup.notifications.exception.NotificationAccessDeniedException;
@@ -29,13 +30,16 @@ class NotificationServiceImplTest {
     @Mock
     private NotificationRepository notificationRepository;
 
+    @Mock
+    private NotificationEmailNotifier notificationEmailNotifier;
+
     private NotificationServiceImpl notificationService;
 
     private final UUID recipientId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        notificationService = new NotificationServiceImpl(notificationRepository);
+        notificationService = new NotificationServiceImpl(notificationRepository, notificationEmailNotifier);
     }
 
     @Test
@@ -52,6 +56,17 @@ class NotificationServiceImplTest {
         assertThat(result.getMessage()).isEqualTo("hola");
         assertThat(result.getReferenceId()).isEqualTo(referenceId);
         assertThat(result.isRead()).isFalse();
+    }
+
+    @Test
+    void create_triggersEmailNotificationForTheSavedNotification() {
+        CreateNotificationCommand command = new CreateNotificationCommand(
+                recipientId, NotificationType.NUEVO_MENSAJE_CHAT, "hola", UUID.randomUUID());
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Notification result = notificationService.create(command);
+
+        verify(notificationEmailNotifier).notifyByEmail(result);
     }
 
     @Test
