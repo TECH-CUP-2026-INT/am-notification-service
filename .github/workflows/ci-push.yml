@@ -88,7 +88,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          if [ -z "$SONAR_TOKEN" ]; then
+          if [ -z "$SONAR_TOKEN" , qa]; then
             echo "SONAR_TOKEN no configurado en el repo; se omite el análisis SonarQube."
             exit 0
           fi
@@ -116,7 +116,7 @@ jobs:
     name: Build & Publish Docker Image
     needs: build-test-analyze
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/develop'
     permissions:
       contents: read
       packages: write
@@ -149,8 +149,8 @@ jobs:
         with:
           images: ghcr.io/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=qa,enable=${{ github.ref == 'refs/heads/qa' }}\n            
             type=sha,prefix=,format=short
 
       - name: Construir y publicar imagen Docker
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     # Se omite si el secret de publish-profile aún no está configurado, para
     # no romper el pipeline mientras se coordina el alta del App Service.
-    if: github.ref == 'refs/heads/main' && needs.dockerize-publish.outputs.azure_secret_present == 'true'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa' && needs.dockerize-publish.outputs.azure_secret_present == 'true'
     environment: production
 
     steps:
@@ -192,3 +192,4 @@ jobs:
               --resource-group techup-rg \
               --container-image-name ghcr.io/${{ env.IMAGE_NAME }}:main
             az webapp restart --name ${{ secrets.AZURE_WEBAPP_NAME }} --resource-group techup-rg
+
