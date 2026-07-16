@@ -1,5 +1,6 @@
 package co.edu.escuelaing.techcup.notifications.service;
 
+import co.edu.escuelaing.techcup.notifications.email.NotificationEmailNotifier;
 import co.edu.escuelaing.techcup.notifications.entity.Notification;
 import co.edu.escuelaing.techcup.notifications.exception.NotificationAccessDeniedException;
 import co.edu.escuelaing.techcup.notifications.exception.NotificationNotFoundException;
@@ -14,9 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationEmailNotifier notificationEmailNotifier;
 
-    public NotificationServiceImpl(NotificationRepository notificationRepository) {
+    public NotificationServiceImpl(
+            NotificationRepository notificationRepository, NotificationEmailNotifier notificationEmailNotifier) {
         this.notificationRepository = notificationRepository;
+        this.notificationEmailNotifier = notificationEmailNotifier;
     }
 
     @Override
@@ -28,7 +32,9 @@ public class NotificationServiceImpl implements NotificationService {
         notification.setMessage(command.message());
         notification.setReferenceId(command.referenceId());
         notification.setCreatedAt(Instant.now());
-        return notificationRepository.save(notification);
+        Notification saved = notificationRepository.save(notification);
+        notificationEmailNotifier.notifyByEmail(saved);
+        return saved;
     }
 
     @Override
