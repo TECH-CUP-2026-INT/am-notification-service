@@ -23,3 +23,22 @@ techcup:
       # Compartida con los servicios que publican eventos hacia nosotros
       # (Sanciones, Comunicaciones, Equipos, Inscripción, Agendamiento).
       api-key: ${INTERNAL_API_KEY:local-dev-internal-key}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+
+logging:
+  level:
+    co.edu.escuelaing.techcup.notifications: INFO

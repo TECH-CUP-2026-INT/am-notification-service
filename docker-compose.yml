@@ -25,8 +25,41 @@ services:
       MONGODB_URI: mongodb://mongo:27017/techcup_notifications
       SERVER_PORT: 8083
       INTERNAL_API_KEY: local-dev-internal-key
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "8083:8083"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      # Puerto de host configurable: si se levantan varios servicios de astromerge
+      # a la vez (matches/notifications/logistics), cada uno usa un puerto distinto
+      # para no chocar, igual que ya se hace con el puerto de Mongo.
+      - "${PROMETHEUS_PORT:-9091}:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./observability/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      - prometheus
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "${ZIPKIN_PORT:-9412}:9411"
 
 volumes:
   techcup-notifications-mongodata:
