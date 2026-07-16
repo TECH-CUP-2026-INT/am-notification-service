@@ -70,7 +70,7 @@ public class SecurityConfig {
                         .ignoringRequestMatchers(serviceToServiceMatchers))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // Webhooks de eventos: solo servicio-a-servicio (API key interna),
                         // nunca un JWT de usuario final - de lo contrario cualquier usuario
