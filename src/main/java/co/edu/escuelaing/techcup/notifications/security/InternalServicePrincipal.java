@@ -5,5 +5,6 @@ package co.edu.escuelaing.techcup.notifications.security;
  * (Sanciones, Comunicaciones, Equipos, Inscripción, Agendamiento). Deliberadamente no
  * tiene un userId: nunca debe poder pasar por CurrentUserProvider.
  */
-public record InternalServicePrincipal() {
+public enum InternalServicePrincipal {
+    INSTANCE
 }

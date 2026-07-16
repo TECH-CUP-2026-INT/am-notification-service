@@ -37,7 +37,7 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
         if (apiKey != null && apiKey.equals(properties.apiKey())
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
             var authentication = new UsernamePasswordAuthenticationToken(
-                    new InternalServicePrincipal(), null, List.of(new SimpleGrantedAuthority("ROLE_SERVICIO_INTERNO")));
+                    InternalServicePrincipal.INSTANCE, null, List.of(new SimpleGrantedAuthority("ROLE_SERVICIO_INTERNO")));
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
         chain.doFilter(request, response);

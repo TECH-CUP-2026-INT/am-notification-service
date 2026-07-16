@@ -22,7 +22,7 @@ import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
 import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -54,9 +54,10 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        PathPatternRequestMatcher.Builder pathPattern = PathPatternRequestMatcher.withDefaults();
         RequestMatcher[] serviceToServiceMatchers = new RequestMatcher[SERVICE_TO_SERVICE_PATHS.length];
         for (int i = 0; i < SERVICE_TO_SERVICE_PATHS.length; i++) {
-            serviceToServiceMatchers[i] = new AntPathRequestMatcher(SERVICE_TO_SERVICE_PATHS[i], "POST");
+            serviceToServiceMatchers[i] = pathPattern.matcher(HttpMethod.POST, SERVICE_TO_SERVICE_PATHS[i]);
         }
 
         http

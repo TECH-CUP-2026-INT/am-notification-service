@@ -1,8 +1,6 @@
 package co.edu.escuelaing.techcup.notifications.controller;
 
 import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -55,7 +53,7 @@ class NotificationControllerTest {
         notification.setMessage("hola");
         notification.setRecipientId(userId);
         notification.setCreatedAt(Instant.now());
-        when(notificationService.listForUser(eq(userId), eq(null))).thenReturn(List.of(notification));
+        when(notificationService.listForUser(userId, null)).thenReturn(List.of(notification));
 
         mockMvc.perform(get("/api/notificaciones").header("Authorization", "Bearer " + jwtFor(userId)))
                 .andExpect(status().isOk())

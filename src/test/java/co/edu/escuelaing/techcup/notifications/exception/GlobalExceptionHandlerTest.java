@@ -1,6 +1,7 @@
 package co.edu.escuelaing.techcup.notifications.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import co.edu.escuelaing.techcup.notifications.dto.response.ErrorResponse;
@@ -110,7 +111,7 @@ class GlobalExceptionHandlerTest {
     }
 
     private MethodArgumentNotValidException mockValidationException() {
-        BindingResult bindingResult = org.mockito.Mockito.mock(BindingResult.class);
+        BindingResult bindingResult = mock(BindingResult.class);
         FieldError fieldError = new FieldError("target", "campo", "debe no ser nulo");
         when(bindingResult.getFieldErrors()).thenReturn(java.util.List.of(fieldError));
         return new MethodArgumentNotValidException((org.springframework.core.MethodParameter) null, bindingResult);

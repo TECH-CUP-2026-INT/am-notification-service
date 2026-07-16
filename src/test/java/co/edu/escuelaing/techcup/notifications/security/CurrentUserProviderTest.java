@@ -40,7 +40,7 @@ class CurrentUserProviderTest {
     @Test
     void getCurrentUserId_internalServicePrincipal_throwsInsufficientAuthentication() {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(new InternalServicePrincipal(), null, List.of()));
+                new UsernamePasswordAuthenticationToken(InternalServicePrincipal.INSTANCE, null, List.of()));
 
         assertThatThrownBy(provider::getCurrentUserId)
                 .isInstanceOf(InsufficientAuthenticationException.class);

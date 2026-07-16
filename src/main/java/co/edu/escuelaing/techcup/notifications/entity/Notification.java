@@ -8,15 +8,12 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document(collection = "notification")
-@CompoundIndexes({
-        @CompoundIndex(name = "ix_notification_recipient_unread", def = "{'recipientId': 1, 'read': 1}"),
-        @CompoundIndex(name = "ix_notification_recipient_created", def = "{'recipientId': 1, 'createdAt': -1}")
-})
+@CompoundIndex(name = "ix_notification_recipient_unread", def = "{'recipientId': 1, 'read': 1}")
+@CompoundIndex(name = "ix_notification_recipient_created", def = "{'recipientId': 1, 'createdAt': -1}")
 @Getter
 @Setter
 @NoArgsConstructor

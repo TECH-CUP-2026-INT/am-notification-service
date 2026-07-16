@@ -9,8 +9,8 @@ import java.util.UUID;
  * CONTRATO PROPUESTO — pendiente de confirmar con el equipo del Servicio de Equipos.
  * Endpoint: POST /api/notificaciones/equipos/solicitudes.
  *
- * <p>Abierto: ¿{@code recipientId} es el capitán del equipo, o hay que notificar a todo
- * el cuerpo técnico (varios POST, uno por destinatario)?
+ * <p>Abierto: ¿{@code recipientId} es el capitán del equipo, o hay que notificar a la
+ * totalidad del cuerpo técnico (varios POST, uno por destinatario)?
  */
 public record TeamLinkRequestEvent(
         @NotNull UUID teamId,

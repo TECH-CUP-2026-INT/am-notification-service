@@ -2,6 +2,7 @@ package co.edu.escuelaing.techcup.notifications.email;
 
 import co.edu.escuelaing.techcup.notifications.entity.enums.NotificationType;
 import java.time.Year;
+import java.time.ZoneOffset;
 
 /**
  * Asunto y cuerpo HTML del correo para cada {@link NotificationType}. El switch es
@@ -53,6 +54,6 @@ public final class NotificationEmailTemplates {
                     </div>
                 </body>
                 </html>
-                """.formatted(subject, message, Year.now().getValue());
+                """.formatted(subject, message, Year.now(ZoneOffset.UTC).getValue());
     }
 }

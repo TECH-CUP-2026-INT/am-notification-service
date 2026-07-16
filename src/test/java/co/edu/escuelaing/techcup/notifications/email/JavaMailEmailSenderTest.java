@@ -30,8 +30,8 @@ class JavaMailEmailSenderTest {
 
         verify(mailSender).send(mimeMessage);
         assertThat(mimeMessage.getSubject()).isEqualTo("Sanción por tarjetas");
-        assertThat(mimeMessage.getAllRecipients()[0].toString()).isEqualTo("dev@techcup.com");
-        assertThat(mimeMessage.getFrom()[0].toString()).isEqualTo("no-reply@techcup.com");
+        assertThat(mimeMessage.getAllRecipients()[0]).hasToString("dev@techcup.com");
+        assertThat(mimeMessage.getFrom()[0]).hasToString("no-reply@techcup.com");
     }
 
     @Test

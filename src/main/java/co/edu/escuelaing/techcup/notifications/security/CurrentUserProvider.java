@@ -11,9 +11,9 @@ public class CurrentUserProvider {
 
     public UUID getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser user)) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser(UUID userId))) {
             throw new InsufficientAuthenticationException("No hay un usuario autenticado en el contexto de seguridad");
         }
-        return user.userId();
+        return userId;
     }
 }

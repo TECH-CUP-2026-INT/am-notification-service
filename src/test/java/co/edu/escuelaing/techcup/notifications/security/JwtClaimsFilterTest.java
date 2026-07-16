@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -56,10 +59,11 @@ class JwtClaimsFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
-    @Test
-    void doFilter_malformedToken_doesNotAuthenticateAndContinuesChain() throws Exception {
+    @ParameterizedTest
+    @MethodSource("invalidBearerValues")
+    void doFilter_invalidBearerValue_doesNotAuthenticateAndContinuesChain(String bearerValue) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer not-a-jwt");
+        request.addHeader("Authorization", "Bearer " + bearerValue);
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 
@@ -68,30 +72,11 @@ class JwtClaimsFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
-    @Test
-    void doFilter_invalidBase64Payload_doesNotAuthenticate() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer header.###not-base64###.sig");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        MockFilterChain chain = new MockFilterChain();
-
-        filter.doFilter(request, response, chain);
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-    }
-
-    @Test
-    void doFilter_subClaimIsNotAValidUuid_doesNotAuthenticate() throws Exception {
-        String token = token("{\"sub\":\"not-a-uuid\"}");
-
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer " + token);
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        MockFilterChain chain = new MockFilterChain();
-
-        filter.doFilter(request, response, chain);
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    private static Stream<String> invalidBearerValues() {
+        return Stream.of(
+                "not-a-jwt",
+                "header.###not-base64###.sig",
+                token("{\"sub\":\"not-a-uuid\"}"));
     }
 
     @Test
