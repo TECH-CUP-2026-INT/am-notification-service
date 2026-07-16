@@ -32,6 +32,7 @@ public final class NotificationEmailTemplates {
             case PARTIDO_CANCELADO -> "Partido cancelado";
             case CAPITANIA_CEDIDA -> "Te delegaron la capitanía del equipo";
             case CAPITANIA_SOLICITADA -> "Solicitud de capitanía";
+            case RESULTADO_PARTIDO -> "Resultado de tu partido";
         };
     }
 
