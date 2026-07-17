@@ -1,120 +1,258 @@
-# Arquitectura
+# Architecture
 
-## Capas
+## System architecture
 
-`controller` → `listener` (puerto de entrada) → `service` → `repository`.
+`service-notifications` is one of the ~12 independent microservices behind
+**Astro Merge**. Inside that system it plays a single role: it is the
+**sink** for anything another service decides is worth alerting a user
+about, and the **source** of the history that the frontend's notification
+bell reads from.
 
-- **`controller/events/*`**: webhooks REST que exponen un endpoint por
-  evento de origen. Solo deserializan y validan el payload HTTP.
-- **`listener/*`**: interpretan el evento de dominio (sanción, mensaje,
-  invitación...) y lo traducen a un `CreateNotificationCommand`. No conocen
-  el repositorio ni el modelo de persistencia.
-- **`service/NotificationServiceImpl`**: no sabe de dónde vino la
-  notificación; solo persiste y resuelve las consultas del historial
-  (campanita).
-- **`security/*`**: dos mecanismos de autenticación conviven en la misma
-  cadena de filtros — ver más abajo.
+```
+ am-matches-service ────┐
+ mk-tournament-service ─┤
+ Communications ────────┼─▶ REST webhooks ─┐
+ Teams ──────────────── ┤                  │
+ Enrollment ─────────── ┤                  ▼
+ Scheduling ────────────┘          service-notifications ──▶ MongoDB (history)
+                                            │      │
+ techcup.exchange (CloudAMQP) ─────────────▶│      ▼
+   match/tournament events                  │   email (best-effort, async)
+                                             │
+ Frontend (REST, Gateway JWT) ──────────────▶│
+```
 
-Esta separación permite reemplazar el transporte (REST → cola de eventos,
-por ejemplo) sin tocar la lógica de negocio: solo cambiaría el `controller`.
+Internally the service follows a straightforward layered design:
 
-## Modelo de datos
+```
+controller  →  listener  →  service  →  repository
+```
 
-Tabla `notification`: `id`, `recipient_id` (destinatario), `type` (tipo de
-evento, enum explícito — pensado para accesibilidad, no solo color/ícono),
-`message`, `reference_id` (id del recurso relacionado, para que el frontend
-navegue), `is_read`, `created_at`, `read_at`.
+- **`controller`** — REST webhooks (one per event type) and the
+  user-facing notification API. Only deserializes, validates, and
+  delegates.
+- **`listener`** — translates each event-specific DTO into a
+  `CreateNotificationCommand`. Doesn't know about persistence or HTTP.
+- **`service`** — `NotificationServiceImpl` persists notifications and
+  resolves history queries; it has no idea whether a notification came
+  from a webhook or from RabbitMQ.
+- **`messaging`** — RabbitMQ consumers for the two event types that arrive
+  from the shared broker instead of a webhook (see
+  [Inter-service communication](#inter-service-communication-api-events)).
+- **`security`** — the JWT and API-key filters, plus CSRF handling, all in
+  one Spring Security filter chain.
 
-`NotificationType` cubre los requerimientos funcionales con valores
-explícitos (se separan aprobada/rechazada/cancelada y
-programado/reprogramado/cancelado en constantes distintas, no un tipo
-genérico + campo de estado, para que el tipo por sí solo sea semánticamente
-inequívoco para un lector de pantalla).
+See [Components](#components) for the full package breakdown and
+[General flow](#general-flow) for how a request moves through these
+layers.
 
-## Seguridad
+## Architecture decisions
 
-Dos mecanismos de autenticación conviven en la misma cadena de filtros de
-Spring Security (`config/SecurityConfig.java`), en el mismo modelo de
-confianza que `am-matches-service` y `am-logistic-service` (el API Gateway
-ya validó la firma del JWT; este servicio no la revalida):
+### Why RabbitMQ?
 
-- **`security/JwtClaimsFilter.java`**: decodifica el claim `sub` del JWT
-  para los endpoints consultados por el usuario final
-  (`/api/notificaciones/**` de lectura/marcado).
-- **`security/InternalApiKeyFilter.java`**: valida el header
-  `X-Internal-Api-Key` para los 9 webhooks de eventos servicio-a-servicio,
-  autenticando como `InternalServicePrincipal` con `ROLE_SERVICIO_INTERNO`.
-- **`security/CurrentUserProvider.java`**: exige específicamente un
-  principal de tipo `AuthenticatedUser` — un `InternalServicePrincipal`
-  (autenticado solo con la API key) **no** puede leer el historial de
-  notificaciones, y viceversa un JWT de usuario no autentica un webhook.
+Competition and Tournaments already publish match/tournament events to
+`techcup.exchange` on the platform's shared CloudAMQP broker, mainly for
+the Statistics service. Rather than asking those teams to *also* build and
+call a dedicated webhook for Notifications, this service subscribes
+directly to that same exchange for the two event types it cares about.
+`RabbitAdmin` is configured with `ignoreDeclarationExceptions(true)`
+specifically so that a broker outage or a missing credential never takes
+down the whole application — this service's primary intake is still the
+REST webhooks, which don't depend on RabbitMQ at all, so a Rabbit failure
+should degrade one feature, not the service. One of the two consumers
+(`TournamentEventConsumer`) currently only logs what it receives: the
+`TournamentFinalizedEvent` payload doesn't carry a recipient or a message,
+so there isn't yet a product decision on what notification, if any, it
+should produce.
 
-**Implicación operativa (no negociable), igual que en los otros dos
-servicios propios:** este servicio nunca debe exponerse directo a internet
-ni a otros servicios que no sea el API Gateway (para los endpoints de
-usuario) y los servicios de origen autorizados (para los webhooks). Debe
-protegerse a nivel de red.
+### Why MongoDB and not a relational database?
 
-## Por qué REST y no un broker de mensajería
+A notification is a single, self-contained document: recipient, type,
+message, an optional reference id, and a read/unread flag. There are no
+joins to model and no cross-record transactions to coordinate — every
+write and read is scoped to one notification or to "all notifications for
+this recipient". That fits a document store more naturally than a
+relational schema, and it avoids maintaining versioned migrations for a
+shape that isn't expected to grow relational complexity: `auto-index-
+creation: true` lets the indexes this service needs appear on startup
+instead of through a migration tool. MongoDB is also compatible with Azure
+Cosmos DB for MongoDB vCore, the managed option in the platform's Azure
+subscription.
 
-Mismo razonamiento que en `am-matches-service` y `am-logistic-service`: se
-evaluó una cola de eventos, pero la plataforma no tiene un broker
-desplegado hoy, e introducir uno solo para este servicio habría exigido
-cambios coordinados en los ~5 equipos dueños de los eventos de origen —
-fuera del alcance de un solo repo. Se optó por REST síncrono con `202
-Accepted` rápido, dejando la traducción evento→notificación aislada en la
-capa `listener` para poder migrar el transporte más adelante sin tocar
-`service`.
+### Inter-service communication: API / events
 
-## Estado de las integraciones entrantes
+Other microservices reach this service two different ways:
 
-Este servicio es **puramente un consumidor de eventos** — nunca dispara una
-notificación por iniciativa propia. La siguiente tabla es la fuente de
-verdad de qué integración está realmente conectada con un productor real
-propio del equipo (astromerge) y cuál sigue esperando a que otro equipo
-confirme su contrato:
+- **REST webhooks** (`controller/events/*`) — one `POST` endpoint per
+  event type, authenticated with the internal API key, always responding
+  `202 Accepted` before the notification (and its email) are necessarily
+  done processing. This is the primary, and for most event types the
+  only, way producers reach this service. See
+  [API](api.md#event-webhooks-service-to-service-internalapikey).
+- **RabbitMQ consumption** (`messaging/*`) — a read-only subscription to
+  `techcup.exchange`, for the two event types described in
+  [Why RabbitMQ?](#why-rabbitmq). This is not a second entry point for the
+  9 webhook events; it's a separate mechanism for events that were never
+  going to get a dedicated webhook because the producer already publishes
+  them to the shared bus for Statistics.
 
-| Origen | Endpoint | Estado |
+There is no outbound channel in the other direction: this service doesn't
+publish anything back to RabbitMQ or call any other microservice's API —
+its only outbound side effect is the best-effort email described in
+[Components](#components).
+
+Which producer is actually connected through which channel — and which
+integrations are still only proposed — is tracked on its own page:
+[Service Integration](integracion-servicios.md).
+
+## Design patterns
+
+| Pattern | Where | Why |
 |---|---|---|
-| **Servicio de Partidos** (`am-matches-service`, propio de astromerge) | `POST /api/notificaciones/sanciones` | ✅ **Confirmado y verificado end-to-end** — `RestSanctionNotifier` en matches-service envía el header `X-Internal-Api-Key` en cada llamada (corregido en esta auditoría; antes no lo enviaba y la llamada fallaba con `401`) |
-| Servicio de Torneos (`mk-tournament-service`) | `POST /api/notificaciones/sanciones-conducta` | ✅ **Confirmado** — cubre la sanción por conducta (`SanctionType.CONDUCT`): el Organizador decide, después del hecho, cuántos partidos se suspende a un jugador; no está ligada a un partido en vivo, a diferencia de `PlayerSanctionedEvent`. `SanctionNotificationAdapter` (Feign) en Torneos solo llama a este endpoint para CONDUCT — las sanciones automáticas (RED_CARD, YELLOW_CARD_ACCUMULATION) las sigue notificando exclusivamente el Servicio de Partidos, para no duplicar el aviso al jugador |
-| Servicio de Comunicaciones | `POST /api/notificaciones/mensajes` | ⚠️ Propuesto — contrato definido de este lado, pendiente de que el equipo dueño lo confirme e implemente el productor |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/capitania` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Propuesto |
-| Servicio de Agendamiento / Torneos | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
+| **Translator** | `listener/*Impl` (one per event type) | Turns an event-specific DTO into a single `CreateNotificationCommand` shape, so `NotificationServiceImpl` never has to know which event produced it |
+| **Repository** | `repository/NotificationRepository` (Spring Data `MongoRepository`) | Standard data-access abstraction over MongoDB, including a custom `markAllAsRead` query |
+| **DTO** | `dto/event/*`, `dto/response/*` | Keeps the wire format (webhook payloads, API responses) separate from the persisted `entity.Notification` |
+| **Chain of Responsibility** | `SecurityConfig`'s filter chain (`JwtClaimsFilter`, `InternalApiKeyFilter`, CSRF handling) | Each filter independently decides whether it recognizes the request and contributes an authentication, before the chain reaches the controller |
+| **Centralized exception handling** | `exception/GlobalExceptionHandler` (`@RestControllerAdvice`) | One place maps every business and framework exception to a consistent `ErrorResponse` |
+| **Best-effort / fail-safe integration** | `RabbitMQConfig` (`ignoreDeclarationExceptions`), `NotificationEmailNotifier` (catches and logs instead of propagating) | Two outbound-ish dependencies (the shared broker, the mail server) are allowed to fail without affecting the in-app notification, which is already persisted by the time either runs |
+| **Asynchronous side effect** | `NotificationEmailNotifier.notifyByEmail` (`@Async`, see `AsyncConfig`) | The email send runs on a separate thread so a slow SMTP server never delays the caller |
 
-Los payloads propuestos están documentados en el Javadoc de cada clase en
-`dto/event/*`, junto con las preguntas abiertas para el equipo dueño (por
-ejemplo: si `recipientId` siempre es un único usuario o si el origen debe
-hacer fan-out por cada destinatario).
+## Components
 
-**Nota de alcance:** ninguno de los ítems "⚠️ Propuesto" es un hueco de
-*este* repositorio — el endpoint, la validación y la traducción a
-notificación ya están implementados y probados de este lado. Lo que falta
-es un servicio externo (fuera de las tres repos del equipo astromerge) que
-llame a ese endpoint. No hay nada más que este equipo pueda hacer para
-"cerrar" esas integraciones sin acceso al código de esos otros servicios.
+```
+config/          SecurityConfig, RabbitMQConfig, EmailProperties, InternalApiKeyProperties, AsyncConfig, OpenApiConfig
 
-## Servicios propios de astromerge (D3) y sus puertos
+controller/
+├── NotificationController      User-facing history API (list, unread count, mark read)
+└── events/*                    One REST webhook controller per event type (6 classes, 9 endpoints)
 
-| Servicio | Puerto app (Docker) | Puerto MongoDB (host) |
-|---|---|---|
-| `am-matches-service` | `8080` | `27017` |
-| `am-notification-service` | `8083` | `27019` |
-| `am-logistic-service` | `8085` | `27018` |
+listener/        *EventListener + *EventListenerImpl (7 pairs) — event DTO → CreateNotificationCommand
 
-## Verificación de conectividad end-to-end
+service/         NotificationService, NotificationServiceImpl, CreateNotificationCommand — persistence + history queries
 
-Se levantaron los 3 servicios a la vez (`docker compose up --build` en cada
-repo, sin colisión de puertos) y se disparó una sanción real desde
-`am-matches-service` (2 tarjetas amarillas al mismo jugador). La llamada
-llegó a `POST /api/notificaciones/sanciones` autenticada con
-`X-Internal-Api-Key`, y la notificación quedó visible al consultar `GET
-/api/notificaciones` autenticado como el jugador sancionado. Esto confirma
-en caliente (no solo con tests) que: (a) el fix del header en
-`RestSanctionNotifier` funciona, y (b) el fix de seguridad de esta misma
-auditoría —exigir `ROLE_SERVICIO_INTERNO` en los webhooks— no rompe la
-integración legítima.
+repository/      NotificationRepository (Spring Data MongoDB)
+
+entity/          Notification (@Document), entity/enums/NotificationType
+
+dto/
+├── event/       One record per event type (webhook payloads and RabbitMQ payloads share these where applicable)
+└── response/    NotificationResponse, UnreadCountResponse, ErrorResponse
+
+mapper/          NotificationMapper (entity → NotificationResponse)
+
+messaging/       MatchEventConsumer, TournamentEventConsumer (@RabbitListener) + their event records
+
+email/           EmailSenderPort → JavaMailEmailSender, NotificationEmailNotifier, RecipientEmailResolver → ConfiguredRecipientEmailResolver, NotificationEmailTemplates
+
+security/        JwtClaimsFilter, InternalApiKeyFilter, AuthenticatedUser, InternalServicePrincipal, CurrentUserProvider
+
+exception/       GlobalExceptionHandler, NotificationNotFoundException, NotificationAccessDeniedException
+```
+
+The `notification` collection stores `id`, `recipientId`, `type` (the
+`NotificationType` enum — kept explicit and specific, e.g. separate
+approved/rejected/cancelled constants, rather than a generic type plus a
+status field, so a screen reader isn't left announcing just a color or
+icon), `message`, `referenceId` (so the frontend can navigate to the
+related resource), `read`, `createdAt`, and `readAt`, with compound
+indexes on `(recipientId, read)` and `(recipientId, createdAt)` for the
+history and unread-count queries.
+
+## General flow
+
+**REST webhook → notification:**
+
+1. A producer calls one of the 9 `POST /api/notificaciones/**` webhooks
+   with `X-Internal-Api-Key`. `SecurityConfig` grants
+   `ROLE_SERVICIO_INTERNO` for that header and exempts these
+   service-to-service paths from CSRF.
+2. The controller validates the payload (Bean Validation) and calls the
+   matching `*EventListener`.
+3. The `*EventListenerImpl` builds the notification message/type for that
+   event and calls `NotificationService.create` with a
+   `CreateNotificationCommand`.
+4. `NotificationServiceImpl` saves the `Notification` and calls
+   `NotificationEmailNotifier.notifyByEmail` — which runs `@Async`, so the
+   controller can return `202 Accepted` without waiting on it.
+5. The email notifier resolves the recipient's address (currently a
+   configured placeholder, see [Components](#components)), builds the
+   subject/body from `NotificationEmailTemplates`, and sends it; any
+   failure is logged, never propagated back to the webhook caller.
+
+**RabbitMQ event → notification (match results only):**
+
+1. `MatchEventConsumer` receives a `MatchStatEvent` from
+   `techcup.notifications.match-events` and calls
+   `NotificationService.create` directly — there's no `listener`
+   interface in this path, since there's no REST equivalent to keep in
+   sync with.
+2. `TournamentEventConsumer` receives a `TournamentFinalizedEvent` and
+   only logs it, for the reason explained in
+   [Why RabbitMQ?](#why-rabbitmq).
+
+**User queries or updates their history:**
+
+1. The frontend calls a `/api/notificaciones/**` endpoint with the
+   Gateway's JWT (`Authorization: Bearer`), and for `PATCH` requests also
+   the CSRF token from the `XSRF-TOKEN` cookie, echoed in the
+   `X-XSRF-TOKEN` header.
+2. `JwtClaimsFilter` decodes the `sub` claim and builds an
+   `AuthenticatedUser` principal — the JWT signature itself is not
+   re-verified, since the Gateway already did that.
+3. `CurrentUserProvider` requires that principal type specifically; an
+   `InternalServicePrincipal` (authenticated with the API key instead) is
+   rejected here.
+4. `NotificationController` delegates to `NotificationService`, and
+   `NotificationMapper` converts the result to `NotificationResponse`.
+
+## UML and architecture diagrams
+
+The diagrams below cover the two flows described in
+[General flow](#general-flow): how an inbound event becomes a persisted
+notification (and, separately, an email), and how the packages depend on
+each other. Source diagram files (if exported from a modeling tool) live
+under `docs/assets/diagrams/`.
+
+## Diagrams
+
+```mermaid
+graph TD
+    subgraph Producers
+        M[am-matches-service]
+        T[mk-tournament-service]
+        O[Other microservices - proposed<br/>Communications / Teams / Enrollment / Scheduling]
+    end
+
+    M -->|POST /sanciones| Ctrl[controller.events.*]
+    T -->|POST /sanciones-conducta| Ctrl
+    O -.->|proposed webhooks| Ctrl
+
+    Ctrl --> Lis[listener.*EventListenerImpl]
+    Lis --> Svc[service.NotificationServiceImpl]
+
+    Bus[techcup.exchange - CloudAMQP] -->|MatchStatEvent| MC[messaging.MatchEventConsumer]
+    Bus -->|TournamentFinalizedEvent| TC[messaging.TournamentEventConsumer]
+    MC --> Svc
+    TC -.->|logged only, no command yet| X[ ]
+
+    Svc --> Repo[repository.NotificationRepository]
+    Repo --> Mongo[(MongoDB)]
+    Svc --> Email[email.NotificationEmailNotifier - async]
+    Email --> SMTP[(Mail server)]
+
+    FE[Frontend] -->|Bearer JWT + CSRF| NC[controller.NotificationController]
+    NC --> Svc
+```
+
+```mermaid
+graph LR
+    controller --> listener
+    controller --> service
+    listener --> service
+    messaging --> service
+    service --> repository
+    service --> email
+    service --> mapper
+    controller --> security
+    controller --> exception
+```

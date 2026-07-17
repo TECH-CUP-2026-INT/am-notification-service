@@ -1,55 +1,130 @@
 # API
 
-## Documentación interactiva (Swagger UI)
+The service exposes **two interfaces** with distinct purposes:
 
-Con el servicio corriendo:
+- **REST API** — the notification history queried by the frontend, and the
+  9 webhooks that other microservices call to report an event.
+- **RabbitMQ consumer** — a read-only subscription to the platform's
+  shared `techcup.exchange`, for the two event types (match results,
+  tournament finals) that arrive from the bus instead of a webhook. See
+  [Messaging (RabbitMQ)](#messaging-rabbitmq).
+
+The REST API is documented with **springdoc-openapi**: once the app is
+running, the interactive Swagger UI is available at
 [http://localhost:8083/swagger-ui/index.html](http://localhost:8083/swagger-ui/index.html)
+(raw spec at `/v3/api-docs`). The controllers don't carry manual
+`@Operation`/example annotations — what you see in Swagger is generated
+straight from the endpoints and their DTOs, so the descriptions below add
+the plain-language context Swagger doesn't show on its own.
 
-La especificación OpenAPI cruda está disponible en `/v3/api-docs`.
+There is no public, unauthenticated endpoint in this service: every REST
+endpoint requires either a `Bearer` JWT (end-user endpoints) or the
+internal API key (webhooks). User endpoints that change state (`PATCH`)
+additionally require a CSRF token; see [Authentication](#authentication).
 
-## Autenticación
+## Authentication
 
-Este servicio expone **dos** esquemas de seguridad distintos, ambos
-disponibles desde el botón **Authorize** de Swagger:
+This service exposes **two** distinct security schemes, both available
+from Swagger's **Authorize** button:
 
-- **`internalApiKey`** (header `X-Internal-Api-Key`): para los 10 webhooks de
-  eventos servicio-a-servicio.
-- **`bearerAuth`** (header `Authorization: Bearer <jwt>`): para los
-  endpoints consultados por el usuario final. El JWT no necesita firma
-  válida en desarrollo local (este servicio no la reverifica, esa es
-  responsabilidad del Gateway) — genera uno con forma válida con
+- **`internalApiKey`** (header `X-Internal-Api-Key`): for the 9
+  service-to-service event webhooks.
+- **`bearerAuth`** (header `Authorization: Bearer <jwt>`): for the
+  endpoints queried by the end user. The JWT doesn't need a valid signature
+  in local development (this service does not re-verify it, that's the
+  Gateway's responsibility) — generate one with a valid shape using
   `./scripts/generate-test-jwt.sh <uuid>`.
 
-Ver [Configuración](configuracion.md) para la guía completa de cómo
-autorizarte en Swagger.
+Since the service is `STATELESS` (no server-side session), state-changing
+user endpoints are additionally protected with a cookie-based CSRF token:
+the frontend must read the `XSRF-TOKEN` cookie and echo its value in the
+`X-XSRF-TOKEN` header on every `PATCH` (both endpoints below). Webhook
+paths are exempt from CSRF — they're always called server-to-server, never
+from a browser, so there's no session to forge. Swagger's **Try it out**
+doesn't add this header automatically, so the two `PATCH` endpoints can't
+be exercised from the UI alone; see [Configuration](configuracion.md) for
+the full walkthrough.
 
-## Endpoints consultados por el frontend (JWT del Gateway)
+## Notification history (end user, `bearerAuth`)
 
-| Método | Ruta | Descripción |
+The four endpoints behind the notification bell. All of them resolve the
+current user from the JWT's `sub` claim, so a user can only ever see or
+mark their own notifications.
+
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/notificaciones?leidas={true\|false}` | Historial del usuario autenticado (filtro opcional) |
-| GET | `/api/notificaciones/no-leidas/conteo` | Conteo para el ícono de campanita |
-| PATCH | `/api/notificaciones/{id}/leer` | Marca una notificación como leída |
-| PATCH | `/api/notificaciones/leer-todas` | Marca todas como leídas |
+| GET | `/api/notificaciones?leidas={true\|false}` | Returns the authenticated user's history, newest first. The `leidas` filter is optional — omit it to get everything, or pass `true`/`false` to get only read or only unread notifications. |
+| GET | `/api/notificaciones/no-leidas/conteo` | Returns just the unread count, for rendering the badge on the bell icon without fetching the whole list. |
+| PATCH | `/api/notificaciones/{id}/leer` | Marks a single notification as read. Requires the CSRF header. Fails with `404` if it doesn't exist, and with `403` if it belongs to a different user. Idempotent — marking an already-read notification again just returns it unchanged. |
+| PATCH | `/api/notificaciones/leer-todas` | Marks every unread notification belonging to the authenticated user as read, in one call. Requires the CSRF header. |
 
-## Webhooks de eventos (API key interna)
+## Event webhooks (service-to-service, `internalApiKey`)
 
-| Origen | Endpoint | Estado del contrato |
+One `POST` endpoint per event type, spread across 6 controllers. Each one
+validates its payload with Bean Validation, translates it into a
+notification, and responds `202 Accepted` immediately — the notification
+(and its email) are created independently of that response.
+
+| Origin | Endpoint | Contract status |
 |---|---|---|
-| Servicio de Partidos (`am-matches-service`) | `POST /api/notificaciones/sanciones` | ✅ Confirmado |
-| Servicio de Torneos (`mk-tournament-service`) | `POST /api/notificaciones/sanciones-conducta` | ✅ Confirmado |
-| Servicio de Comunicaciones | `POST /api/notificaciones/mensajes` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/capitania` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Propuesto |
-| Servicio de Agendamiento | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
+| Matches Service (`am-matches-service`) | `POST /api/notificaciones/sanciones` | ✅ Confirmed |
+| Tournaments Service (`mk-tournament-service`) | `POST /api/notificaciones/sanciones-conducta` | ✅ Confirmed |
+| Communications Service | `POST /api/notificaciones/mensajes` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/capitania` | ⚠️ Proposed |
+| Enrollment Service | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Proposed |
+| Scheduling Service | `POST /api/notificaciones/partidos` | ⚠️ Proposed |
 
-Ver [Arquitectura](arquitectura.md#estado-de-las-integraciones-entrantes)
-para el detalle de qué falta de cada lado.
+See [Service Integration](integracion-servicios.md#status-of-inbound-integrations)
+for which of these are actually being called by a real producer today.
 
-## Ejemplo: webhook de sanción (contrato confirmado)
+**`POST /api/notificaciones/sanciones`** — a player was sanctioned for
+accumulating cards (or received a direct red card) in a live match.
+Carries `matchId`, `teamId`, `playerId`, `triggeringCardType`
+(`YELLOW`/`RED`), `yellowCardsInMatch`, and `occurredAt`; notifies the
+sanctioned player.
+
+**`POST /api/notificaciones/sanciones-conducta`** — the Organizer
+suspends a player for a number of matches after reviewing their conduct,
+unrelated to a specific live match. Carries `playerId` (a `String`, not a
+`UUID` — mirrors how Tournaments models it), `matchesSuspended`, `reason`,
+and `occurredAt`.
+
+**`POST /api/notificaciones/mensajes`** — a new chat message was sent.
+Carries `chatId`, `senderId`, `senderName`, `recipientId`, a
+`messagePreview`, and `sentAt`; notifies `recipientId`.
+
+**`POST /api/notificaciones/equipos/solicitudes`** — a player requested to
+join a team. Carries `teamId`, `teamName`, `requesterId`, `requesterName`,
+`recipientId` (the team's Captain), `requestId`, and `occurredAt`.
+
+**`POST /api/notificaciones/equipos/respuestas`** — the Captain responded
+to a linking request. Carries `teamId`, `teamName`, `requestId`,
+`recipientId` (the requesting player), a boolean `accepted`, and
+`respondedAt`.
+
+**`POST /api/notificaciones/equipos/invitaciones`** — a player was invited
+to join a team. Carries `teamId`, `teamName`, `invitedUserId`,
+`invitationId`, `invitedBy`, and `occurredAt`; notifies `invitedUserId`.
+
+**`POST /api/notificaciones/equipos/capitania`** — the team captaincy is
+being transferred. See the [example below](#example-captaincy-transfer-webhook-proposed-contract)
+for how `initiatedBy` determines the recipient.
+
+**`POST /api/notificaciones/inscripciones/estado`** — a team's enrollment
+status changed to `APROBADA`, `RECHAZADA`, or `CANCELADA`. Carries
+`enrollmentId`, `teamId`, `recipientId`, `newStatus`, an optional
+`reason`, and `occurredAt`.
+
+**`POST /api/notificaciones/partidos`** — a match was scheduled,
+rescheduled, or cancelled (`action`: `PROGRAMADO`/`REPROGRAMADO`/
+`CANCELADO`). Carries `matchId`, `teamHomeId`, `teamAwayId`,
+`recipientId`, `scheduledAt`, an optional `previousScheduledAt` (present
+on reschedules), and `occurredAt`.
+
+## Example: sanction webhook (confirmed contract)
 
 `POST /api/notificaciones/sanciones`
 
@@ -64,10 +139,9 @@ para el detalle de qué falta de cada lado.
 }
 ```
 
-Responde `202 Accepted` sin cuerpo — el procesamiento (crear la
-notificación) ocurre de forma independiente del llamador.
+Responds `202 Accepted` with no body.
 
-## Ejemplo: webhook de sanción por conducta (contrato confirmado)
+## Example: conduct-sanction webhook (confirmed contract)
 
 `POST /api/notificaciones/sanciones-conducta`
 
@@ -80,12 +154,12 @@ notificación) ocurre de forma independiente del llamador.
 }
 ```
 
-A diferencia del webhook de tarjetas, este no está ligado a un partido en
-vivo: lo dispara el Servicio de Torneos cuando el Organizador aplica una
-sanción por conducta (`SanctionType.CONDUCT`), no el Servicio de Partidos.
-Responde `202 Accepted` sin cuerpo.
+Unlike the card-sanction webhook, this one isn't tied to a live match —
+it's fired by the Tournaments Service when the Organizer applies a
+conduct sanction, not by the Matches Service. Responds `202 Accepted`
+with no body.
 
-## Ejemplo: webhook de cesión de capitanía (contrato propuesto)
+## Example: captaincy transfer webhook (proposed contract)
 
 `POST /api/notificaciones/equipos/capitania`
 
@@ -100,16 +174,16 @@ Responde `202 Accepted` sin cuerpo.
 }
 ```
 
-`initiatedBy` determina el destinatario: `DELEGATION` notifica a
-`newCaptainId` (el Capitán actual delegó el rol); `APPLICATION` notifica a
-`currentCaptainId` (un jugador aplicó para ser Capitán). Responde `202
-Accepted` sin cuerpo.
+`initiatedBy` determines the recipient: `DELEGATION` notifies
+`newCaptainId` (the current Captain delegated the role); `APPLICATION`
+notifies `currentCaptainId` (a player applied to become Captain). Responds
+`202 Accepted` with no body.
 
-## Ejemplo: consultar el historial
+## Example: querying the history
 
 `GET /api/notificaciones?leidas=false`
 
-Response `200 OK` (lista de `NotificationResponse`):
+Response `200 OK` (list of `NotificationResponse`):
 
 ```json
 [
@@ -125,16 +199,38 @@ Response `200 OK` (lista de `NotificationResponse`):
 ]
 ```
 
-## Errores
+## Errors
 
-Los errores de negocio (notificación no encontrada, acceso denegado a una
-notificación de otro usuario) se manejan de forma centralizada en
-`GlobalExceptionHandler` (`@RestControllerAdvice`) y se devuelven con el DTO
-`ErrorResponse`:
+Business and framework errors are handled centrally in
+`exception/GlobalExceptionHandler` (`@RestControllerAdvice`) and returned
+with the `ErrorResponse` DTO (`timestamp`, `status`, `error`, `message`,
+`path`). `error` is the standard HTTP reason phrase; `message` is a
+human-readable detail, in Spanish for the handlers with a custom message
+and in whatever language Bean Validation's default messages resolve to for
+payload-validation errors:
 
-| Código | Causa |
+| Code | Cause |
 |---|---|
-| `400` | Validación de payload de un webhook (Bean Validation) |
-| `401` | Sin autenticación válida para el endpoint (JWT para usuario, API key para webhook) |
-| `403` | Autenticado con el mecanismo equivocado (p. ej. API key en un endpoint de usuario) |
+| `400` | Webhook payload validation (Bean Validation), or a request body that couldn't be parsed |
+| `401` | No valid authentication for the endpoint (JWT for user, API key for webhook) |
+| `403` | Wrong authentication mechanism, insufficient role, or missing/invalid CSRF token |
 | `404` | `NotificationNotFoundException` |
+| `500` | Unexpected error not explicitly mapped |
+
+## Messaging (RabbitMQ)
+
+Two event types skip the webhook path entirely and are consumed directly
+from the shared `techcup.exchange` on CloudAMQP:
+
+- **`MatchStatEvent`** (`techcup.match.event.*`) — a player's match result
+  (won/lost/drawn, goals, cards). Translated into a `RESULTADO_PARTIDO`
+  notification the same way a webhook event would be, just without a
+  `listener` interface in between.
+- **`TournamentFinalizedEvent`** (`techcup.tournament.event.*`) — logged
+  only for now; see [Why RabbitMQ?](arquitectura.md#why-rabbitmq) for why
+  it doesn't produce a notification yet.
+
+See [Architecture](arquitectura.md#inter-service-communication-api-events)
+for the reasoning behind this second channel, and
+[Service Integration](integracion-servicios.md) for the routing-key
+contract with the shared broker.

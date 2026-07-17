@@ -1,66 +1,72 @@
-# Introducción
+# Introduction
 
-## Contexto
+## Context
 
-**TechCup Fútbol** es un torneo universitario cuya plataforma digital, **Astro
-Merge**, está compuesta por alrededor de 12 microservicios independientes,
-cada uno responsable de un dominio de negocio acotado.
+**TechCup Fútbol** is a university tournament whose digital platform, **Astro
+Merge**, is made up of about 12 independent microservices, each responsible
+for a bounded business domain.
 
-El **Servicio de Notificaciones** (`service-notifications`) es el
-microservicio encargado de centralizar las alertas in-app del usuario final:
-recibe eventos de otros microservicios (sanciones, mensajes de chat,
-solicitudes/invitaciones de equipo, cambios de inscripción, programación de
-partidos), los traduce a una notificación persistida, y expone el historial
-al frontend.
+The **Notifications Service** (`service-notifications`) is the microservice
+in charge of centralizing the end user's in-app alerts: it receives events
+from other microservices (card and conduct sanctions, chat messages, team
+requests/invitations/captaincy, enrollment status changes, match
+scheduling), translates them into a persisted notification, sends a
+best-effort email, and exposes the history to the frontend.
 
-## Propósito
+## Purpose
 
-Darle al usuario final una campanita de notificaciones confiable, de forma
-que:
+Give the end user a reliable notification bell, such that:
 
-- Cada evento relevante de otro servicio produzca, a lo sumo, una
-  notificación clara y accesible (nunca depende solo de color/ícono, ver
-  [Anexos](anexos.md)).
-- El usuario pueda consultar su historial, filtrarlo por leídas/no leídas, y
-  marcar notificaciones como leídas (una o todas).
-- Un fallo o retraso de este servicio nunca bloquee al servicio que originó
-  el evento — los webhooks responden `202 Accepted` y la notificación se
-  procesa de forma independiente.
+- Every relevant event from another service produces, at most, one clear
+  and accessible notification (never relying only on color/icon — see
+  [Appendices](anexos.md)).
+- The user can browse their history, filter it by read/unread, and mark
+  notifications as read (one or all).
+- A failure or delay in this service never blocks the service that
+  originated the event — webhooks respond `202 Accepted` immediately, and
+  a failing email never affects the in-app notification, which is already
+  persisted before the email is even attempted.
 
-## Dos actores, dos mecanismos de autenticación
+## Two actors, two authentication mechanisms
 
-Este servicio tiene dos tipos de "cliente" completamente distintos:
+This service has two completely different types of "client":
 
-1. **Otros microservicios**, que envían eventos vía webhooks REST
-   autenticados con una API key interna compartida (`X-Internal-Api-Key`).
-2. **El usuario final** (a través del frontend), que consulta su historial
-   de notificaciones autenticado con el JWT que ya validó el API Gateway.
+1. **Other microservices**, which send events via REST webhooks
+   authenticated with a shared internal API key (`X-Internal-Api-Key`).
+2. **The end user** (through the frontend), who queries and updates their
+   notification history authenticated with the JWT already validated by
+   the API Gateway, plus a CSRF token for state-changing requests.
 
-Ambos mecanismos conviven en la misma cadena de filtros de Spring Security —
-ver [Arquitectura](arquitectura.md).
+Both mechanisms coexist in the same Spring Security filter chain — see
+[Architecture](arquitectura.md).
 
-## Alcance
+## Scope
 
-### Qué SÍ hace este servicio
+### What this service DOES do
 
-1. Recibir eventos de sanción por tarjetas desde el Servicio de Partidos
-   (`am-matches-service`, integración propia del equipo astromerge,
-   **confirmada**).
-2. Recibir (una vez los equipos dueños confirmen el contrato) eventos de
-   chat, solicitudes/invitaciones de equipo, cambios de inscripción y
-   programación de partidos.
-3. Traducir cada evento a una notificación persistida con un
-   `NotificationType` explícito y un mensaje legible.
-4. Exponer el historial de notificaciones del usuario autenticado, el
-   conteo de no leídas, y el marcado de leídas (una o todas).
+1. Receive card-sanction events from the Matches Service
+   (`am-matches-service`) and conduct-sanction events from the Tournaments
+   Service (`mk-tournament-service`) — both **confirmed** integrations
+   owned by real producers.
+2. Receive (once the owning teams confirm the contract) chat events, team
+   requests/invitations/captaincy transfers, enrollment status changes,
+   and match scheduling events.
+3. Consume match-result and tournament-finalized events directly from the
+   platform's shared RabbitMQ exchange.
+4. Translate each event into a persisted notification with an explicit
+   `NotificationType` and a readable message, and attempt to email it to
+   the recipient.
+5. Expose the authenticated user's notification history, unread count, and
+   mark-as-read (single or bulk).
 
-### Qué NO hace (responsabilidad de otros servicios)
+### What it does NOT do (owned by other services)
 
-| Responsabilidad | Servicio dueño |
+| Responsibility | Owning service |
 |---|---|
-| Decidir *cuándo* ocurre un evento notificable | El servicio de origen (Partidos, Comunicaciones, Equipos, Inscripción, Agendamiento) |
-| Envío de push/email real fuera de la app | Fuera de alcance de la plataforma actual |
-| Autenticación y validación de firma del JWT de usuario | API Gateway |
+| Deciding *when* a notifiable event occurs | The originating service (Matches, Tournaments, Communications, Teams, Enrollment, Scheduling) |
+| Resolving a recipient's real email address | Currently a placeholder (see [Architecture](arquitectura.md)) — no service in the org exposes this yet |
+| Authenticating and validating the signature of the user's JWT | API Gateway |
 
-Ver [Arquitectura](arquitectura.md) para el detalle de qué integraciones
-están confirmadas y cuáles siguen pendientes de otros equipos.
+See [Service Integration](integracion-servicios.md) for the detail of
+which integrations are confirmed and which are still pending from other
+teams.

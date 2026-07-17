@@ -1,58 +1,57 @@
-# Pruebas
+# Testing
 
-## Cómo ejecutar las pruebas
+## Running the tests
 
 ```bash
-# Suite completa (el test de contexto de Spring levanta MongoDB vía Testcontainers)
+# Full suite (the Spring context test starts MongoDB via Testcontainers)
 ./mvnw test
 
-# Suite completa + gate de cobertura (JaCoCo >= 80%)
+# Full suite + coverage gate (JaCoCo >= 80%)
 ./mvnw verify
 ```
 
-El test de contexto completo usa Testcontainers, así que solo necesitas Docker
-disponible en la máquina donde corres las pruebas (no hace falta levantar Mongo
-a mano). Si igual quieres tener la base arriba para probar manualmente:
+The full context test uses Testcontainers, so you only need Docker
+available on the machine running the tests (no need to start Mongo by
+hand). If you still want the database up for manual testing:
 
 ```bash
 docker compose up -d mongo
 ```
 
-## Qué cubren las pruebas
+## What the tests cover
 
-| Área | Cubre |
+| Area | Covers |
 |---|---|
-| `listener/*ListenerImplTest` | Construcción de la notificación a partir de cada tipo de evento (sanción, mensaje, invitación, etc.) — un test por listener |
-| `service/NotificationServiceImplTest` | Reglas de `NotificationService`: pertenencia del destinatario, idempotencia de "marcar como leída", conteo de no leídas |
-| `controller/*` | Contrato HTTP de los endpoints de usuario y de los webhooks de eventos |
-| `security/*` | `JwtClaimsFilter`, `InternalApiKeyFilter`, `CurrentUserProvider` (incluyendo que un principal de servicio interno no pueda leer el historial de usuario, y viceversa) |
-| `exception/*` | `GlobalExceptionHandler` y forma del `ErrorResponse` |
-| `ServiceNotificationsApplicationTests` | Carga del contexto de Spring Boot (MongoDB real vía Testcontainers) |
+| `listener/*ListenerImplTest` | Building the notification from each event type (sanction, message, invitation, etc.) — one test per listener |
+| `service/NotificationServiceImplTest` | `NotificationService` rules: recipient ownership, idempotency of "mark as read", unread count |
+| `controller/*` | HTTP contract of the user endpoints and the event webhooks |
+| `security/*` | `JwtClaimsFilter`, `InternalApiKeyFilter`, `CurrentUserProvider` (including that an internal-service principal cannot read a user's history, and vice versa) |
+| `exception/*` | `GlobalExceptionHandler` and the `ErrorResponse` shape |
+| `ServiceNotificationsApplicationTests` | Spring Boot context load (real MongoDB via Testcontainers) |
 
-## Cobertura mínima
+## Minimum coverage
 
-El pipeline de CI aplica un gate de cobertura de línea del **80%** con
-JaCoCo (`jacoco-maven-plugin`, goal `check`, atado a la fase `verify`),
-excluyendo DTOs, entidades de MongoDB, clases de configuración y la clase principal
-de arranque.
+The CI pipeline enforces an **80%** line-coverage gate with JaCoCo
+(`jacoco-maven-plugin`, `check` goal, bound to the `verify` phase),
+excluding DTOs, MongoDB entities, configuration classes, and the main
+bootstrap class.
 
-## Pruebas en el pipeline de CI
+## Tests in the CI pipeline
 
-El workflow de GitHub Actions (`.github/workflows/ci-push.yml` y los
-equivalentes `pr-master.yml`/`pr-qa.yml`, calcados del pipeline ya probado
-de `am-matches-service`) levanta un contenedor de PostgreSQL como servicio,
-ejecuta `./mvnw test`, publica el reporte de Surefire, corre `./mvnw
-jacoco:check` para el gate de cobertura, publica el reporte de JaCoCo, y
-solo si todo eso pasa corre el análisis estático con SonarQube y empaqueta
-el JAR.
+The GitHub Actions workflow (`.github/workflows/ci-push.yml` and the
+equivalent `pr-master.yml`/`pr-qa.yml`, mirrored from the already-proven
+`am-matches-service` pipeline) starts a PostgreSQL container as a workflow
+service, runs `./mvnw test`, publishes the Surefire report, runs `./mvnw
+jacoco:check` for the coverage gate, publishes the JaCoCo report, and only
+if all of that passes runs static analysis with SonarQube and packages the
+JAR.
 
-## Verificación end-to-end manual
+## Manual end-to-end verification
 
-Además de las pruebas automatizadas, el flujo completo se validó
-manualmente contra el stack de Docker (ver la guía paso a paso en el
-`README.md`): los 8 webhooks de eventos, los 4 endpoints de usuario, y los
-tres casos de seguridad (sin API key, sin JWT, mecanismo cruzado).
+Beyond the automated tests, the full flow was manually validated against
+the Docker stack (see the step-by-step guide in `README.md`): the 8 event
+webhooks, the 4 user endpoints, and the three security cases (no API key,
+no JWT, cross-mechanism authentication).
 
-Ver [Configuración](configuracion.md) para variables de entorno y
-[Arquitectura](arquitectura.md) para el detalle de las reglas de negocio que
-estas pruebas verifican.
+See [Configuration](configuracion.md) for environment variables and
+[Architecture](arquitectura.md) for the business rules these tests verify.
