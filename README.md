@@ -1,9 +1,95 @@
-# Servicio de Notificaciones — TechCup Fútbol
+# 1. Nombre del servicio
+
+**Servicio de Notificaciones — TechCup Fútbol** (`am-notification-service`)
+
+# 2. Descripción del servicio
 
 Microservicio del sistema TechCup Fútbol (torneo universitario). Es puramente un
 **consumidor de eventos** de otros microservicios y un **productor de alertas in-app**
 para el usuario final: nunca genera notificaciones por iniciativa propia, siempre
-reacciona a algo que ocurrió en otro servicio.
+reacciona a algo que ocurrió en otro servicio. Recibe eventos por webhooks REST y,
+para dos tipos de evento, directamente del broker RabbitMQ compartido de la
+plataforma (`techcup.exchange`).
+
+Es uno de los tres servicios del dominio **D3 — Operaciones y Comunicación** del
+equipo **astromerge**, junto con `am-matches-service` y `am-logistic-service`.
+
+# 3. Funcionalidades del servicio
+
+1. **Recepción de eventos** de otros microservicios (sanciones por tarjetas,
+   sanciones de conducta, mensajes de chat, solicitudes/respuestas/invitaciones
+   de equipo, cambios de estado de inscripción, agendamiento de partidos) a
+   través de **9 webhooks REST**.
+2. **Notificaciones de resultados y torneo** consumidas directamente del
+   exchange RabbitMQ compartido, sin necesidad de un webhook adicional.
+3. **Historial de notificaciones** del usuario autenticado, filtrable por
+   leídas/no leídas, con marcado individual o masivo como leída.
+4. **Correo best-effort** por cada notificación creada, enviado de forma
+   asíncrona para que un servidor de correo lento o caído nunca retrase la
+   respuesta al servicio de origen.
+5. **Aislamiento de fallos**: el servicio que origina el evento nunca se ve
+   bloqueado por este servicio (`202 Accepted` en los webhooks, consumo
+   best-effort desde RabbitMQ).
+6. **Autenticación diferenciada** entre llamadas servicio-a-servicio (API key
+   interna) y usuario final (JWT del Gateway + CSRF), en la misma cadena de
+   filtros de Spring Security.
+
+# 4. Badges
+
+[![CI](https://github.com/TECH-CUP-2026-INT/am-notification-service/actions/workflows/ci-push.yml/badge.svg)](https://github.com/TECH-CUP-2026-INT/am-notification-service/actions/workflows/ci-push.yml)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-6a1b9a)](https://tech-cup-2026-int.github.io/am-notification-service/)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=TECH-CUP-2026-INT_am-notification-service&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=TECH-CUP-2026-INT_am-notification-service)
+
+# 5. Integrantes del servicio
+
+| Nombre | Contacto |
+|---|---|
+| Tomas Quiceno Ostos | tomas.quiceno-o@mail.escuelaing.edu.co |
+| Sara Viviana Arteaga Rodríguez | sara.arteaga.r91@gmail.com |
+| Julian Tinjaca | julian.tinjaca-c@mail.escuelaing.edu.co |
+| Johan Beltrán | — |
+
+# 6. Introducción rápida para probar
+
+```bash
+docker compose up --build
+```
+
+Levanta MongoDB (con healthcheck) y la app ya conectada a él. Los índices se crean
+automáticamente al arrancar. Cuando ambos contenedores estén arriba:
+
+- Swagger UI: http://localhost:8083/swagger-ui/index.html
+- Health: http://localhost:8083/actuator/health
+- MongoDB queda expuesto en `localhost:27019` (no `27017`, para no chocar con otro
+  Mongo que ya tengas corriendo local) por si quieres conectarte con un cliente.
+
+`docker compose down` para apagar todo; agrega `-v` si además quieres borrar los
+datos persistidos. Ver la [guía completa de pruebas en Swagger](#guía-completa-de-pruebas-en-swagger)
+más abajo para disparar los 8 eventos de ejemplo y validar la seguridad, y
+[Pruebas](#pruebas) para la suite automatizada (reflejada en el badge de CI).
+
+# 7. Tecnologías usadas
+
+| Tecnología | Versión | Uso |
+|---|---|---|
+| Java | 21 | Lenguaje de programación |
+| Spring Boot | 3.5.6 | Framework de aplicación |
+| Spring Web | — | API REST (usuario final y webhooks) |
+| Spring Data MongoDB | — | Persistencia orientada a documentos |
+| MongoDB | — | Base de datos (compatible con Azure Cosmos DB for MongoDB vCore) |
+| Spring Security | — | JWT del Gateway (usuario), API key interna (webhooks) y CSRF basado en cookie |
+| Spring AMQP | — | Consume eventos de partido/torneo del broker CloudAMQP compartido |
+| Spring Mail | — | Correo best-effort por cada notificación creada |
+| Micrometer + Prometheus + Zipkin | — | Métricas y trazabilidad distribuida (observabilidad) |
+| springdoc-openapi | 2.7.0 | Swagger UI / especificación OpenAPI |
+| Lombok | — | Reducción de código boilerplate |
+| Maven (wrapper `mvnw`) | — | Gestión de dependencias y build |
+| Testcontainers | — | MongoDB real en pruebas de integración |
+| JaCoCo | 0.8.12 | Cobertura de pruebas (≥ 80%) en CI |
+| Docker + Docker Compose | — | Contenerización y orquestación local (app + MongoDB + observabilidad) |
+| MkDocs (Material) | — | Documentación técnica extendida ([`docs/`](docs/)) |
+
+---
 
 ## Arquitectura
 
@@ -14,6 +100,8 @@ Capas: `controller` → `listener` (puerto de entrada) → `service` → `reposi
 - **`listener/*`**: interpretan el evento de dominio (sanción, mensaje, invitación...)
   y lo traducen a un `CreateNotificationCommand`. No conocen el repositorio ni el
   modelo de persistencia.
+- **`messaging/*`**: consumidores `@RabbitListener` para los dos tipos de evento que
+  llegan directo del broker compartido en vez de por webhook.
 - **`service/NotificationServiceImpl`**: no sabe de dónde vino la notificación; solo
   persiste y resuelve las consultas del historial (campanita).
 - **`security/*`**: dos mecanismos de autenticación conviven en la misma cadena de
@@ -24,12 +112,16 @@ Capas: `controller` → `listener` (puerto de entrada) → `service` → `reposi
 Esta separación permite reemplazar el transporte (REST → cola de eventos, por
 ejemplo) sin tocar la lógica de negocio: solo cambiaría el `controller`.
 
+Diagramas de contexto, componentes y clases (editables en
+[draw.io](https://app.diagrams.net/)) en
+[`docs/assets/diagrams/`](docs/assets/diagrams/); versión Mermaid renderizada
+en [`docs/arquitectura.md`](docs/arquitectura.md).
+
 ## Decisiones de integración
 
-- **Mecanismo**: REST síncrono, igual que el resto de microservicios del equipo (ver
-  `service-match/integration/*`). No hay cola de eventos en la plataforma hoy; introducir
-  una para un solo servicio habría exigido cambios en 5 equipos dueños de los eventos,
-  fuera del alcance de este repo.
+- **Mecanismo**: REST síncrono para los webhooks, más consumo directo de RabbitMQ
+  para los dos eventos que ya se publican en el exchange compartido (ver
+  `docs/arquitectura.md`).
 - **Seguridad de los webhooks**: header `X-Internal-Api-Key` (configurable vía
   `INTERNAL_API_KEY`), porque esos endpoints reciben POSTs servicio-a-servicio sin JWT
   de usuario. Están exentos de CSRF (ver abajo): no los origina un navegador.
@@ -38,8 +130,7 @@ ejemplo) sin tocar la lógica de negocio: solo cambiaría el `controller`.
   es `STATELESS` (sin sesión de servidor), así que el token viaja en una cookie
   (`XSRF-TOKEN`, `HttpOnly=false`) que el frontend debe leer con JS y reenviar como
   header en cada `PATCH`/`POST`/`PUT`/`DELETE` — es el patrón que Spring Security
-  recomienda para SPAs sin sesión. **El frontend necesita este cambio** para que
-  "marcar como leída" siga funcionando tras este commit.
+  recomienda para SPAs sin sesión.
 - **Persistencia**: MongoDB (Spring Data MongoDB), sin migraciones versionadas — los
   índices se crean automáticamente al arrancar (`auto-index-creation: true`).
 
@@ -49,7 +140,7 @@ Colección `notification`: `id`, `recipientId` (destinatario), `type` (tipo de e
 enum explícito — pensado para accesibilidad, no solo color/ícono), `message`, `referenceId`
 (id del recurso relacionado, para que el frontend navegue), `read`, `createdAt`, `readAt`.
 
-`NotificationType` cubre los 8 requerimientos funcionales con 13 valores (se separan
+`NotificationType` cubre los requerimientos funcionales con 16 valores (se separan
 aprobada/rechazada/cancelada y programado/reprogramado/cancelado en constantes
 distintas, no un tipo genérico + campo de estado, para que el tipo por sí solo sea
 semánticamente inequívoco para un lector de pantalla).
@@ -78,10 +169,9 @@ semánticamente inequívoco para un lector de pantalla).
 | Servicio de Agendamiento | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
 
 Los payloads propuestos están documentados en el Javadoc de cada clase en
-`dto/event/*`, junto con las preguntas abiertas para el equipo dueño (por ejemplo: si
-`recipientId` siempre es un único usuario o si el origen debe hacer fan-out por cada
-destinatario). El equipo de Partidos además deberá agregar el header
-`X-Internal-Api-Key` a `RestSanctionNotifier`, que hoy no lo envía.
+`dto/event/*`, junto con las preguntas abiertas para el equipo dueño. Ver
+[`docs/integracion-servicios.md`](docs/integracion-servicios.md) para el detalle
+completo de qué integraciones están confirmadas.
 
 ## Configuración
 
@@ -243,7 +333,7 @@ Con el `bearerAuth` ya puesto:
   crear, la más reciente primero. Prueba también con `?leidas=false`.
 - **`GET /api/notificaciones/no-leidas/conteo`** → `{"count": 8}`.
 - **`PATCH /api/notificaciones/{id}/leer`** y **`PATCH /api/notificaciones/leer-todas`**
-  requieren además el header CSRF `X-XSRF-TOKEN` (ver sección de CSRF más abajo) —
+  requieren además el header CSRF `X-XSRF-TOKEN` (ver sección de CSRF más arriba) —
   Swagger UI no lo agrega solo, así que estos dos no se pueden probar con el botón
   **Try it out** sin ese paso manual.
 
@@ -256,9 +346,6 @@ Con el `bearerAuth` ya puesto:
   `CurrentUserProvider` exige específicamente un principal de tipo usuario, no de
   servicio interno.
 
-Ya validé este flujo completo end-to-end (los 8 eventos + los 4 endpoints de usuario +
-los tres casos de seguridad) contra el stack de Docker antes de escribir esta guía.
-
 ### Sin Docker
 
 ```bash
@@ -266,7 +353,7 @@ los tres casos de seguridad) contra el stack de Docker antes de escribir esta gu
 ```
 
 Requiere una instancia de MongoDB accesible por tu cuenta; usa las variables de
-entorno de la sección anterior para apuntarlo a tu base.
+entorno de la sección [Configuración](#configuración) para apuntarlo a tu base.
 
 ## Pruebas
 
@@ -279,3 +366,34 @@ tipo de evento (un test por listener) y las reglas de `NotificationService`
 (pertenencia del destinatario, idempotencia de "marcar como leída", conteo de no
 leídas). El test de contexto completo (`ServiceNotificationsApplicationTests`)
 levanta un contenedor MongoDB real vía Testcontainers, igual que en `service-match`.
+El badge de CI al inicio de este README refleja el resultado de esta suite (y del
+gate de cobertura JaCoCo ≥ 80%) en cada push.
+
+## CI/CD
+
+El pipeline en [`.github/workflows/ci-push.yml`](.github/workflows/ci-push.yml) se
+dispara en cada `push` a `main`/`develop`/`feature/**`, y automatiza: build, pruebas
+(con publicación del reporte), gate de cobertura JaCoCo, análisis estático con
+SonarQube, empaquetado del JAR, dockerización, publicación en GHCR y despliegue a
+Azure App Service (cuando corresponde). Un segundo workflow,
+[`.github/workflows/deploy-mkdocs.yml`](.github/workflows/deploy-mkdocs.yml), publica
+la documentación en GitHub Pages en cada push a `main`.
+
+## Documentación completa
+
+La documentación técnica extendida (introducción, requerimientos, configuración,
+arquitectura y diagramas, API, integración de servicios, pruebas, equipo, anexos)
+está construida con [MkDocs](https://www.mkdocs.org/) y vive en [`docs/`](docs/),
+publicada en <https://tech-cup-2026-int.github.io/am-notification-service/>.
+
+Para servirla en local:
+
+```bash
+pip install -r requirements.txt
+mkdocs serve
+```
+
+Ver [`docs/arquitectura.md`](docs/arquitectura.md) para la arquitectura en detalle,
+y [`docs/assets/diagrams/`](docs/assets/diagrams/) para los diagramas fuente en
+formato draw.io (`.drawio`, XML editable en
+[app.diagrams.net](https://app.diagrams.net/)).
