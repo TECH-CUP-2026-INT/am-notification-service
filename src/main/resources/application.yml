@@ -44,7 +44,7 @@ spring:
     connection-timeout: 5000
 
 server:
-  port: ${SERVER_PORT:8083}
+  port: ${SERVER_PORT:5626}
 
 techcup:
   security:
