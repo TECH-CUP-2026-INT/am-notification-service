@@ -1,116 +1,150 @@
-# Configuración
+# Configuration
 
-## Clonar el repositorio
+## Clone the repository
 
 ```bash
 git clone https://github.com/TECH-CUP-2026-INT/am-notification-service.git
 cd am-notification-service
 ```
 
-## Ejecutar el servicio localmente
+## Running the service locally
 
-### Opción 1: Docker Compose (recomendado)
+### Option 1: Docker Compose (recommended)
 
 ```bash
 docker compose up --build
 ```
 
-Levanta MongoDB y RabbitMQ (ambos con healthcheck) y la app ya conectada a
-ellos. Los índices y las colas se crean automáticamente al arrancar. Cuando
-los tres contenedores estén arriba:
+Starts MongoDB and RabbitMQ (both with health checks) plus the app already
+wired to them. Indexes and queues are created automatically on startup.
+Once all three containers are up:
 
 - Swagger UI: [http://localhost:8083/swagger-ui/index.html](http://localhost:8083/swagger-ui/index.html)
 - Health: [http://localhost:8083/actuator/health](http://localhost:8083/actuator/health)
-- MongoDB queda expuesto en el host en `27019` (no `27017`, para no chocar con
-  el Mongo de `am-matches-service` ni con otro Mongo local).
-- RabbitMQ (local, para desarrollo/tests) queda expuesto en `5674` (AMQP) y
-  `15674` (panel de administración, usuario/clave `guest`/`guest`). Este
-  RabbitMQ local es independiente del broker compartido de CloudAMQP — ver
-  [Arquitectura](arquitectura.md#rabbitmq-cloudamqp-compartido).
+- MongoDB is exposed on the host at `27019` (not `27017`, to avoid
+  colliding with `am-matches-service`'s Mongo or another local Mongo).
+- RabbitMQ (local, for development/tests) is exposed at `5674` (AMQP) and
+  `15674` (admin panel, user/password `guest`/`guest`). This local
+  RabbitMQ is independent from the shared CloudAMQP broker — see
+  [Service Integration](integracion-servicios.md#rabbitmq-shared-cloudamqp-broker).
 
-`docker compose down` para apagar todo; agrega `-v` si además quieres borrar
-los datos persistidos.
+`docker compose down` shuts everything down; add `-v` if you also want to
+delete persisted data.
 
-### Opción 2: Maven local
+### Option 2: Local Maven
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Requiere una instancia de MongoDB y una de RabbitMQ accesibles; usa las
-variables de entorno de abajo para apuntarlo a tu infraestructura (`docker
-compose up -d mongo rabbitmq` si solo quieres la infraestructura y correr la
-app aparte con Maven).
+Requires a reachable MongoDB instance and a reachable RabbitMQ instance;
+use the environment variables below to point it at your infrastructure
+(`docker compose up -d mongo rabbitmq` if you only want the infrastructure
+and to run the app separately with Maven).
 
-## Variables de entorno
+## Environment variables
 
-| Variable | Valor por defecto | Uso |
+Nothing about where this service will run — a laptop, a CI runner, Azure
+App Service — is hardcoded into the jar. Every value that changes between
+those environments (which database to talk to, which broker, which port,
+which secret) is read from an environment variable, and `application.yml`
+only supplies the **local-development default** for each one, using
+Spring's property-placeholder syntax `${VARIABLE_NAME:default-value}`.
+That's why `docker compose up` works out of the box with no `.env` file:
+every default already points at the containers `docker-compose.yml`
+starts, and only deployment environments need to override anything.
+
+Spring resolves these through its standard externalized-configuration
+order, so — from lowest to highest precedence — the value in
+`application.yml`'s `${...:default}` is used unless a real OS environment
+variable with that name is set, which is in turn overridden by a
+`-D` system property or command-line argument if one is passed. In
+practice this service only ever relies on the first two: the shipped
+default, or an environment variable set by whoever is running it
+(`docker-compose.yml`'s `environment:` block locally, a platform secret
+or app-service configuration in deployment). There is no
+`application-<profile>.yml` split by environment — the same jar and the
+same `application.yml` run everywhere, only the environment variables
+around them change.
+
+| Variable | Default value | Use |
 |---|---|---|
-| `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` | Connection string de MongoDB (compatible con Azure Cosmos DB for MongoDB vCore) |
-| `SERVER_PORT` | `8083` | Puerto HTTP del servicio (coincide con `NOTIFICACIONES_SERVICE_URL` por defecto en `am-matches-service`) |
-| `INTERNAL_API_KEY` | `local-dev-internal-key` | API key compartida para autenticar los webhooks de eventos servicio-a-servicio |
-| `RABBITMQ_HOST` | `localhost` | Host del broker RabbitMQ |
-| `RABBITMQ_PORT` | `5674` en local (`5672` dentro de docker-compose) | Puerto AMQP |
-| `RABBITMQ_USERNAME` | `guest` | Usuario del broker |
-| `RABBITMQ_PASSWORD` | `guest` | Contraseña del broker — **en despliegue nunca va en `application.yml` ni en `docker-compose.yml`**, se inyecta como secreto de la plataforma. Ver [Arquitectura](arquitectura.md#rabbitmq-cloudamqp-compartido) |
-| `RABBITMQ_VHOST` | `/` | Virtual host del broker |
-| `RABBITMQ_SSL_ENABLED` | `false` | `true` en CloudAMQP (TLS obligatorio en el puerto 5671) |
-| `RABBITMQ_SHARED_EXCHANGE` | `techcup.exchange` | Nombre del exchange topic compartido entre todos los microservicios de TechCup |
+| `MONGODB_URI` | `mongodb://localhost:27017/techcup_notifications` | MongoDB connection string (compatible with Azure Cosmos DB for MongoDB vCore) |
+| `SERVER_PORT` | `8083` | Service HTTP port (matches `NOTIFICACIONES_SERVICE_URL`'s default in `am-matches-service`) |
+| `INTERNAL_API_KEY` | `local-dev-internal-key` | Shared API key used to authenticate service-to-service event webhooks |
+| `RABBITMQ_HOST` | `localhost` | RabbitMQ broker host |
+| `RABBITMQ_PORT` | `5674` locally (`5672` inside docker-compose) | AMQP port |
+| `RABBITMQ_USERNAME` | `guest` | Broker user |
+| `RABBITMQ_PASSWORD` | `guest` | Broker password — **in deployment this never goes into `application.yml` or `docker-compose.yml`**, it is injected as a platform secret. See [Service Integration](integracion-servicios.md#rabbitmq-shared-cloudamqp-broker) |
+| `RABBITMQ_VHOST` | `/` | Broker virtual host |
+| `RABBITMQ_SSL_ENABLED` | `false` | `true` on CloudAMQP (TLS required on port 5671) |
+| `RABBITMQ_SHARED_EXCHANGE` | `techcup.exchange` | Name of the topic exchange shared across all TechCup microservices |
 
-Estas variables se resuelven en `src/main/resources/application.yml`.
+These variables are resolved in `src/main/resources/application.yml`. None
+of them are optional in the sense of "the service degrades gracefully
+without it" — every one has a default, but the defaults are only meant for
+local development; running with production traffic on
+`INTERNAL_API_KEY=local-dev-internal-key` or `RABBITMQ_PASSWORD=guest`
+would defeat the authentication mechanisms described in
+[Architecture](arquitectura.md#inter-service-communication-api-events).
+`docker-compose.yml` sets each one explicitly for the
+`service-notifications` container (pointing `MONGODB_URI` and
+`RABBITMQ_HOST` at the `mongo`/`rabbitmq` service names on the compose
+network instead of `localhost`), so local runs never depend on values
+leaking in from your shell.
 
-### Conectarse al RabbitMQ compartido de CloudAMQP (staging/producción)
+### Connecting to the shared CloudAMQP RabbitMQ (staging/production)
 
-Para apuntar el servicio al broker compartido en vez del RabbitMQ local de
-`docker-compose.yml`, exporta:
+To point the service at the shared broker instead of the local RabbitMQ
+from `docker-compose.yml`, export:
 
 ```bash
-export RABBITMQ_HOST=<host de CloudAMQP — pídelo al equipo por canal privado>
+export RABBITMQ_HOST=<CloudAMQP host — ask the team via a private channel>
 export RABBITMQ_PORT=5671
-export RABBITMQ_USERNAME=<usuario de CloudAMQP — pídelo al equipo por canal privado>
-export RABBITMQ_VHOST=<vhost de CloudAMQP — pídelo al equipo por canal privado>
+export RABBITMQ_USERNAME=<CloudAMQP user — ask the team via a private channel>
+export RABBITMQ_VHOST=<CloudAMQP vhost — ask the team via a private channel>
 export RABBITMQ_SSL_ENABLED=true
-export RABBITMQ_PASSWORD=<pídesela a Juan David Rangel Jiménez por privado>
+export RABBITMQ_PASSWORD=<ask Juan David Rangel Jiménez privately>
 ```
 
-Ninguno de estos valores (host, usuario, vhost ni contraseña) **está en este
-repositorio ni debe llegar a estarlo** (ni en `application.yml`, ni en
-`docker-compose.yml`, ni en un commit, ni en un mensaje de chat público) —
-al ser un repositorio público, publicar aquí los datos de conexión del
-broker compartido facilita ataques de fuerza bruta contra la contraseña. Se
-piden por canal privado del equipo y se inyectan solo como variables de
-entorno o secretos de la plataforma de despliegue (GitHub Actions
-secret, Azure App Service configuration, etc.). Local (`docker compose up`)
-sigue usando el RabbitMQ propio del proyecto y nunca necesita esta
-contraseña.
+None of these values (host, user, vhost, or password) **live in this
+repository, nor should they ever**, (not in `application.yml`, not in
+`docker-compose.yml`, not in a commit, not in a public chat message) —
+since this is a public repository, publishing the shared broker's
+connection details here would make brute-force attacks against the
+password easier. They are requested through the team's private channel and
+injected only as environment variables or deployment-platform secrets
+(GitHub Actions secret, Azure App Service configuration, etc.). Local
+(`docker compose up`) always keeps using the project's own RabbitMQ and
+never needs this password.
 
-## Probar los endpoints protegidos
+## Testing protected endpoints
 
-Este servicio expone dos esquemas de seguridad distintos en Swagger, ambos
-disponibles desde el botón **Authorize**:
+This service exposes two distinct security schemes in Swagger, both
+available from the **Authorize** button:
 
-- **`internalApiKey`**: pega el valor de `INTERNAL_API_KEY` (por defecto
-  `local-dev-internal-key`). Habilita los 8 webhooks de eventos.
-- **`bearerAuth`**: como este servicio confía en que el API Gateway ya
-  validó la firma (`JwtClaimsFilter` solo lee el claim `sub`, no la
-  reverifica), no necesitas un JWT real firmado para probar en local.
-  Genera uno con forma válida:
+- **`internalApiKey`**: paste the value of `INTERNAL_API_KEY` (defaults to
+  `local-dev-internal-key`). Enables the 9 event webhooks.
+- **`bearerAuth`**: since this service trusts that the API Gateway already
+  validated the signature (`JwtClaimsFilter` only reads the `sub` claim, it
+  does not re-verify it), you don't need a real, signed JWT to test
+  locally. Generate one with a valid shape:
 
   ```bash
   ./scripts/generate-test-jwt.sh 33333333-3333-3333-3333-333333333333
   ```
 
-  Pega el resultado en `bearerAuth`. Ver la guía completa paso a paso en el
-  `README.md` del repositorio.
+  Paste the result into `bearerAuth`. See the full step-by-step guide in
+  the repository's `README.md`.
 
-## Documentación (MkDocs)
+## Documentation (MkDocs)
 
-La documentación técnica de este servicio está construida con
-[MkDocs](https://www.mkdocs.org/) y el tema
-[Material for MkDocs](https://squidfunk.github.io/mkdocs-material/), igual
-que en `am-matches-service` y `am-logistic-service`.
+This service's technical documentation is built with
+[MkDocs](https://www.mkdocs.org/) and the
+[Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) theme,
+just like in `am-matches-service` and `am-logistic-service`.
 
-### Instalación
+### Installation
 
 ```bash
 python -m venv .venv
@@ -122,27 +156,27 @@ source .venv/bin/activate
 pip install mkdocs-material
 ```
 
-### Servir la documentación en local
+### Serving the documentation locally
 
 ```bash
 mkdocs serve
 ```
 
-Levanta un servidor local en
-[http://127.0.0.1:8000](http://127.0.0.1:8000) con recarga automática.
+Starts a local server at
+[http://127.0.0.1:8000](http://127.0.0.1:8000) with live reload.
 
-### Compilar el sitio estático
+### Building the static site
 
 ```bash
 mkdocs build
 ```
 
-Genera el sitio en `site/` (carpeta ignorada por git).
+Generates the site under `site/` (a folder ignored by git).
 
-### Estructura de la documentación
+### Documentation structure
 
 ```
-proyecto/
+project/
 │
 ├── docs/
 │   ├── index.md
@@ -151,6 +185,7 @@ proyecto/
 │   ├── configuracion.md
 │   ├── arquitectura.md
 │   ├── api.md
+│   ├── integracion-servicios.md
 │   ├── pruebas.md
 │   ├── equipo.md
 │   ├── anexos.md
@@ -164,7 +199,7 @@ proyecto/
 ├── src/
 ```
 
-Los colores y tipografía del tema (paleta morado/dorado de TechCup) están
-definidos en `docs/assets/stylesheets/extra.css` y declarados en
-`mkdocs.yml` bajo `extra_css` — el mismo archivo usado en los otros dos
-servicios del equipo, para que los tres sitios se vean consistentes.
+The theme's colors and typography (TechCup's purple/gold palette) are
+defined in `docs/assets/stylesheets/extra.css` and declared in
+`mkdocs.yml` under `extra_css` — the same file used by the other two
+services on the team, so all three sites look consistent.

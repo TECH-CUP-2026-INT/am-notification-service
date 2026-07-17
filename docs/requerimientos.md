@@ -1,66 +1,66 @@
-# Requerimientos
+# Requirements
 
-Requisitos funcionales tomados de la hoja de requerimientos del equipo
-**astromerge** (dominio D3 — Operaciones y Comunicación) para el Servicio de
-Notificaciones, contrastados contra la implementación actual.
+Functional requirements taken from the **astromerge** team's requirements
+sheet (domain D3 — Operations and Communication) for the Notifications
+Service, contrasted against the current implementation.
 
-## Requisitos funcionales (hoja de requerimientos)
+## Functional requirements (requirements sheet)
 
-| ID | Requisito | Estado |
+| ID | Requirement | Status |
 |---|---|---|
-| RF-01 | Notificación de sanción por acumulación de tarjetas, solo al jugador sancionado | ✅ Implementado y **confirmado** con el productor real (`am-matches-service`) — `POST /api/notificaciones/sanciones` |
-| RF-02 | Notificación de nuevo mensaje en chat, a todos los miembros activos | ⚠️ Endpoint implementado (`POST /api/notificaciones/mensajes`), contrato **propuesto** — pendiente de confirmar con el Servicio de Comunicaciones (otro equipo) |
-| RF-03 | Notificación de solicitud de vinculación a equipo, al Capitán | ⚠️ Endpoint implementado (`POST /api/notificaciones/equipos/solicitudes`), contrato **propuesto** — pendiente del Servicio de Equipos |
-| RF-04 | Notificación de respuesta a solicitud de vinculación, al jugador solicitante | ⚠️ Endpoint implementado (`POST /api/notificaciones/equipos/respuestas`), contrato **propuesto** — pendiente del Servicio de Equipos |
-| RF-05 | Notificación de invitación a equipo, al jugador invitado | ⚠️ Endpoint implementado (`POST /api/notificaciones/equipos/invitaciones`), contrato **propuesto** — pendiente del Servicio de Equipos |
-| RF-06 | Notificación de cambio de estado de inscripción, al Capitán | ⚠️ Endpoint implementado (`POST /api/notificaciones/inscripciones/estado`), contrato **propuesto** — pendiente del Servicio de Inscripción |
-| RF-07 | Notificación de inscripción completada con comprobante, al Organizador | ⚠️ Endpoint implementado (`POST /api/notificaciones/inscripciones/comprobante`), contrato **propuesto** — pendiente del Servicio de Inscripción |
-| RF-08 | Notificación de programación, reprogramación o cancelación de partido, al Capitán y jugadores afectados | ⚠️ Endpoint implementado (`POST /api/notificaciones/partidos`), contrato **propuesto** — pendiente del Servicio de Agendamiento/Torneos |
-| RF-09 | Notificación de cesión del rol de capitanía del equipo | ✅ Endpoint implementado (`POST /api/notificaciones/equipos/capitania`), contrato **propuesto** — pendiente del Servicio de Equipos |
-| RF-10 | Consulta de historial de notificaciones: cada usuario ve solo las suyas, filtrable | ✅ Implementado (`GET /api/notificaciones`, `?leidas=`) |
+| RF-01 | Sanction notification for accumulated cards, only to the sanctioned player | ✅ Implemented and **confirmed** with the real producer (`am-matches-service`) — `POST /api/notificaciones/sanciones` |
+| RF-02 | New chat message notification, to all active members | ⚠️ Endpoint implemented (`POST /api/notificaciones/mensajes`), **proposed** contract — pending confirmation with the Communications Service (another team) |
+| RF-03 | Team-linking request notification, to the Captain | ⚠️ Endpoint implemented (`POST /api/notificaciones/equipos/solicitudes`), **proposed** contract — pending from the Teams Service |
+| RF-04 | Response-to-linking-request notification, to the requesting player | ⚠️ Endpoint implemented (`POST /api/notificaciones/equipos/respuestas`), **proposed** contract — pending from the Teams Service |
+| RF-05 | Team invitation notification, to the invited player | ⚠️ Endpoint implemented (`POST /api/notificaciones/equipos/invitaciones`), **proposed** contract — pending from the Teams Service |
+| RF-06 | Enrollment status change notification, to the Captain | ⚠️ Endpoint implemented (`POST /api/notificaciones/inscripciones/estado`), **proposed** contract — pending from the Enrollment Service |
+| RF-07 | Enrollment completed with proof-of-payment notification, to the Organizer | ⚠️ Endpoint implemented (`POST /api/notificaciones/inscripciones/comprobante`), **proposed** contract — pending from the Enrollment Service |
+| RF-08 | Match scheduling, rescheduling, or cancellation notification, to the Captain and affected players | ⚠️ Endpoint implemented (`POST /api/notificaciones/partidos`), **proposed** contract — pending from the Scheduling/Tournaments Service |
+| RF-09 | Team captaincy transfer notification | ✅ Endpoint implemented (`POST /api/notificaciones/equipos/capitania`), **proposed** contract — pending from the Teams Service |
+| RF-10 | Notification history query: each user only sees their own, filterable | ✅ Implemented (`GET /api/notificaciones`, `?leidas=`) |
 
-!!! note "Huecos funcionales cerrados"
-    RF-09 (cesión de capitanía) quedó identificado como hueco durante una
-    auditoría previa y ya fue implementado: `CaptaincyTransferEvent` cubre
-    las dos direcciones del requerimiento (delegación por el Capitán actual
-    → notifica al jugador elegido; aplicación de un jugador → notifica al
-    Capitán actual) con los tipos `CAPITANIA_CEDIDA` y
-    `CAPITANIA_SOLICITADA`. El resto de los "⚠️ propuestos" no son huecos de
-    este repo: son endpoints ya construidos y probados de este lado, a la
-    espera de que el equipo dueño del evento (otro dominio, fuera de
-    astromerge) confirme el contrato exacto y empiece a llamarlos — ver la
-    tabla de estado en [Arquitectura](arquitectura.md).
+!!! note "Closed functional gaps"
+    RF-09 (captaincy transfer) was identified as a gap during a previous
+    audit and has already been implemented: `CaptaincyTransferEvent`
+    covers both directions of the requirement (delegation by the current
+    Captain → notifies the chosen player; application by a player →
+    notifies the current Captain) with the `CAPITANIA_CEDIDA` and
+    `CAPITANIA_SOLICITADA` types. The remaining "⚠️ proposed" items are not
+    gaps in this repository: they are endpoints already built and tested
+    on this side, waiting for the team that owns the event (a different
+    domain, outside astromerge) to confirm the exact contract and start
+    calling them — see the status table in [Architecture](arquitectura.md).
 
-## Requisitos no funcionales
+## Non-functional requirements
 
-| ID | Requisito |
+| ID | Requirement |
 |---|---|
-| RNF-01 | **Aislamiento de fallos**: este servicio nunca debe bloquear al servicio de origen; los webhooks responden `202 Accepted` de forma rápida. |
-| RNF-02 | **Seguridad de red**: el servicio no verifica la firma del JWT (responsabilidad del Gateway), por lo que debe permanecer inaccesible fuera de la red interna de la plataforma. |
-| RNF-03 | **Autenticación diferenciada**: los webhooks de eventos (servicio-a-servicio) y los endpoints de usuario final usan mecanismos de autenticación distintos y no intercambiables — un JWT de usuario no debe poder autenticar un webhook, ni viceversa. |
-| RNF-04 | **Accesibilidad**: cada tipo de evento tiene un `NotificationType` explícito y semánticamente inequívoco (no un tipo genérico + color/ícono). |
-| RNF-05 | **Privacidad**: un usuario solo puede consultar y marcar como leídas sus propias notificaciones. |
-| RNF-06 | **Mantenibilidad**: el transporte (hoy REST) está desacoplado de la lógica de negocio detrás de la capa `listener`, para poder reemplazarlo (p. ej. por una cola de eventos) sin tocar `service`. |
-| RNF-07 | **Reproducibilidad del build**: el proyecto debe compilar, probar y empaquetarse de forma determinista vía Maven Wrapper, tanto en local como en CI. |
-| RNF-08 | **Cobertura de pruebas**: al menos 80% de cobertura de línea sobre la lógica de negocio (excluyendo DTOs, entidades de MongoDB y clases de configuración), verificado automáticamente en CI (JaCoCo). |
+| RNF-01 | **Failure isolation**: this service must never block the originating service; webhooks respond `202 Accepted` quickly. |
+| RNF-02 | **Network security**: the service does not verify the JWT signature (the Gateway's responsibility), so it must remain unreachable from outside the platform's internal network. |
+| RNF-03 | **Differentiated authentication**: event webhooks (service-to-service) and end-user endpoints use distinct, non-interchangeable authentication mechanisms — a user JWT must not be able to authenticate a webhook, nor vice versa. |
+| RNF-04 | **Accessibility**: every event type has an explicit, semantically unambiguous `NotificationType` (not a generic type plus color/icon). |
+| RNF-05 | **Privacy**: a user can only view and mark as read their own notifications. |
+| RNF-06 | **Maintainability**: the transport (REST today) is decoupled from the business logic behind the `listener` layer, so it can be replaced (e.g. by an event queue) without touching `service`. |
+| RNF-07 | **Build reproducibility**: the project must compile, test, and package deterministically via the Maven Wrapper, both locally and in CI. |
+| RNF-08 | **Test coverage**: at least 80% line coverage over the business logic (excluding DTOs, MongoDB entities, and configuration classes), automatically verified in CI (JaCoCo). |
 
-## Prerrequisitos técnicos
+## Technical prerequisites
 
-Para desarrollar y ejecutar el servicio localmente:
+To develop and run the service locally:
 
-| Herramienta | Versión mínima | Uso |
+| Tool | Minimum version | Use |
 |---|---|---|
-| [Java (JDK)](https://adoptium.net/) | 21 | Compilación y ejecución del servicio |
-| [Docker](https://www.docker.com/) / Docker Compose | 24+ | Base de datos MongoDB y contenedor de la aplicación (también usado por Testcontainers en las pruebas) |
-| [Git](https://git-scm.com/) | 2.x | Control de versiones |
-| Maven Wrapper (`mvnw`, incluido en el repo) | — | No requiere instalación de Maven local |
+| [Java (JDK)](https://adoptium.net/) | 21 | Compiling and running the service |
+| [Docker](https://www.docker.com/) / Docker Compose | 24+ | MongoDB database and application container (also used by Testcontainers in the tests) |
+| [Git](https://git-scm.com/) | 2.x | Version control |
+| Maven Wrapper (`mvnw`, included in the repo) | — | No local Maven installation required |
 
-Para trabajar en la documentación:
+To work on the documentation:
 
-| Herramienta | Versión mínima | Uso |
+| Tool | Minimum version | Use |
 |---|---|---|
-| [Python](https://www.python.org/) | 3.9+ | Requerido por MkDocs |
-| [MkDocs](https://www.mkdocs.org/) + [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) | — | Generación del sitio de documentación |
+| [Python](https://www.python.org/) | 3.9+ | Required by MkDocs |
+| [MkDocs](https://www.mkdocs.org/) + [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) | — | Generating the documentation site |
 
-Ver [Configuración](configuracion.md) para los pasos de instalación de cada
-herramienta y las variables de entorno del servicio.
+See [Configuration](configuracion.md) for the installation steps for each
+tool and the service's environment variables.

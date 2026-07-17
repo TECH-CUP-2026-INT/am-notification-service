@@ -1,55 +1,122 @@
 # API
 
-## Documentación interactiva (Swagger UI)
+The service exposes **two interfaces** with distinct purposes:
 
-Con el servicio corriendo:
+- **REST API** — the notification history queried by the frontend, and the
+  webhooks that other microservices call to report an event.
+- **RabbitMQ messaging** — the equivalent entry point for the same 9
+  events, one queue per event type, for producers that publish instead of
+  calling a webhook.
+
+The REST API is documented with **springdoc-openapi**: once the app is
+running, the interactive Swagger UI is available at
 [http://localhost:8083/swagger-ui/index.html](http://localhost:8083/swagger-ui/index.html)
+(raw spec at `/v3/api-docs`). Every endpoint below is described exactly as
+it appears there — same summaries, same request/response examples — just
+grouped by resource and written out in plain language. RabbitMQ has no
+Swagger equivalent; see [Messaging (RabbitMQ)](#messaging-rabbitmq) below
+and [Architecture](arquitectura.md#inter-service-communication-api-events)
+for the queue/exchange layout.
 
-La especificación OpenAPI cruda está disponible en `/v3/api-docs`.
+Every REST endpoint requires either a `Bearer` JWT (end-user endpoints) or
+the internal API key (webhooks) — there is no public, unauthenticated
+endpoint in this service, since none of its data is meant to be readable
+without knowing whose notifications they are.
 
-## Autenticación
+## Authentication
 
-Este servicio expone **dos** esquemas de seguridad distintos, ambos
-disponibles desde el botón **Authorize** de Swagger:
+This service exposes **two** distinct security schemes, both available
+from Swagger's **Authorize** button:
 
-- **`internalApiKey`** (header `X-Internal-Api-Key`): para los 9 webhooks de
-  eventos servicio-a-servicio.
-- **`bearerAuth`** (header `Authorization: Bearer <jwt>`): para los
-  endpoints consultados por el usuario final. El JWT no necesita firma
-  válida en desarrollo local (este servicio no la reverifica, esa es
-  responsabilidad del Gateway) — genera uno con forma válida con
+- **`internalApiKey`** (header `X-Internal-Api-Key`): for the 9
+  service-to-service event webhooks.
+- **`bearerAuth`** (header `Authorization: Bearer <jwt>`): for the
+  endpoints queried by the end user. The JWT doesn't need a valid signature
+  in local development (this service does not re-verify it, that's the
+  Gateway's responsibility) — generate one with a valid shape using
   `./scripts/generate-test-jwt.sh <uuid>`.
 
-Ver [Configuración](configuracion.md) para la guía completa de cómo
-autorizarte en Swagger.
+See [Configuration](configuracion.md) for the complete guide on how to
+authorize in Swagger.
 
-## Endpoints consultados por el frontend (JWT del Gateway)
+## Notification history (end user, `bearerAuth`)
 
-| Método | Ruta | Descripción |
+The four endpoints behind the notification bell. All of them resolve the
+current user from the JWT's `sub` claim, so a user can only ever see or
+mark their own notifications.
+
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/notificaciones?leidas={true\|false}` | Historial del usuario autenticado (filtro opcional) |
-| GET | `/api/notificaciones/no-leidas/conteo` | Conteo para el ícono de campanita |
-| PATCH | `/api/notificaciones/{id}/leer` | Marca una notificación como leída |
-| PATCH | `/api/notificaciones/leer-todas` | Marca todas como leídas |
+| GET | `/api/notificaciones?leidas={true\|false}` | Returns the authenticated user's history, newest first. The `leidas` filter is optional — omit it to get everything, or pass `true`/`false` to get only read or only unread notifications. |
+| GET | `/api/notificaciones/no-leidas/conteo` | Returns just the unread count, for rendering the badge on the bell icon without fetching the whole list. |
+| PATCH | `/api/notificaciones/{id}/leer` | Marks a single notification as read. Fails with `404` if it doesn't exist, and with `403` if it belongs to a different user. Idempotent — marking an already-read notification again just returns it unchanged. |
+| PATCH | `/api/notificaciones/leer-todas` | Marks every unread notification belonging to the authenticated user as read, in one call. |
 
-## Webhooks de eventos (API key interna)
+## Event webhooks (service-to-service, `internalApiKey`)
 
-| Origen | Endpoint | Estado del contrato |
+One `POST` endpoint per event type. Each one validates its payload with
+Bean Validation, translates it into a notification, and responds
+`202 Accepted` immediately — the notification is created independently of
+that response, so a slow write to MongoDB never makes the caller wait.
+
+| Origin | Endpoint | Contract status |
 |---|---|---|
-| Servicio de Partidos (`am-matches-service`) | `POST /api/notificaciones/sanciones` | ✅ Confirmado |
-| Servicio de Comunicaciones | `POST /api/notificaciones/mensajes` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/capitania` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/comprobante` | ⚠️ Propuesto |
-| Servicio de Agendamiento | `POST /api/notificaciones/partidos` | ⚠️ Propuesto |
+| Matches Service (`am-matches-service`) | `POST /api/notificaciones/sanciones` | ✅ Confirmed |
+| Communications Service | `POST /api/notificaciones/mensajes` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/solicitudes` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/respuestas` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/invitaciones` | ⚠️ Proposed |
+| Teams Service | `POST /api/notificaciones/equipos/capitania` | ⚠️ Proposed |
+| Enrollment Service | `POST /api/notificaciones/inscripciones/estado` | ⚠️ Proposed |
+| Enrollment Service | `POST /api/notificaciones/inscripciones/comprobante` | ⚠️ Proposed |
+| Scheduling Service | `POST /api/notificaciones/partidos` | ⚠️ Proposed |
 
-Ver [Arquitectura](arquitectura.md#estado-de-las-integraciones-entrantes)
-para el detalle de qué falta de cada lado.
+See [Service Integration](integracion-servicios.md#status-of-inbound-integrations)
+for which of these are actually being called by a real producer today.
 
-## Ejemplo: webhook de sanción (contrato confirmado)
+**`POST /api/notificaciones/sanciones`** — a player was sanctioned for
+accumulating cards (or received a direct red card) in a match. Carries
+`matchId`, `teamId`, `playerId`, `triggeringCardType`
+(`YELLOW`/`RED`), `yellowCardsInMatch`, and `occurredAt`; notifies the
+sanctioned player.
+
+**`POST /api/notificaciones/mensajes`** — a new chat message was sent.
+Carries `chatId`, `senderId`, `senderName`, `recipientId`, a
+`messagePreview` (truncated, not the full message), and `sentAt`; notifies
+`recipientId`.
+
+**`POST /api/notificaciones/equipos/solicitudes`** — a player requested to
+join a team. Carries `teamId`, `teamName`, `requesterId`, `requesterName`,
+`recipientId` (the team's Captain), `requestId`, and `occurredAt`.
+
+**`POST /api/notificaciones/equipos/respuestas`** — the Captain responded
+to a linking request. Carries `teamId`, `teamName`, `requestId`,
+`recipientId` (the requesting player), a boolean `accepted`, and
+`respondedAt`.
+
+**`POST /api/notificaciones/equipos/invitaciones`** — a player was invited
+to join a team. Carries `teamId`, `teamName`, `invitedUserId`,
+`invitationId`, `invitedBy` (who sent the invitation), and `occurredAt`;
+notifies `invitedUserId`.
+
+**`POST /api/notificaciones/equipos/capitania`** — the team captaincy is
+being transferred. See the [example below](#example-captaincy-transfer-webhook-proposed-contract)
+for how `initiatedBy` determines the recipient.
+
+**`POST /api/notificaciones/inscripciones/estado`** — a team's enrollment
+status changed. Carries `enrollmentId`, `teamId`, `recipientId` (the
+Captain), an optional `reason`, and `occurredAt`.
+
+**`POST /api/notificaciones/inscripciones/comprobante`** — an enrollment's
+proof of payment was received. Carries `enrollmentId`, `teamId`,
+`recipientId` (the Organizer), a `proofUrl`, and `receivedAt`.
+
+**`POST /api/notificaciones/partidos`** — a match was scheduled,
+rescheduled, or cancelled. Carries `matchId`, `teamHomeId`, `teamAwayId`,
+`recipientId`, `scheduledAt`, an optional `previousScheduledAt` (present
+on reschedules), and `occurredAt`.
+
+## Example: sanction webhook (confirmed contract)
 
 `POST /api/notificaciones/sanciones`
 
@@ -64,10 +131,9 @@ para el detalle de qué falta de cada lado.
 }
 ```
 
-Responde `202 Accepted` sin cuerpo — el procesamiento (crear la
-notificación) ocurre de forma independiente del llamador.
+Responds `202 Accepted` with no body.
 
-## Ejemplo: webhook de cesión de capitanía (contrato propuesto)
+## Example: captaincy transfer webhook (proposed contract)
 
 `POST /api/notificaciones/equipos/capitania`
 
@@ -82,16 +148,16 @@ notificación) ocurre de forma independiente del llamador.
 }
 ```
 
-`initiatedBy` determina el destinatario: `DELEGATION` notifica a
-`newCaptainId` (el Capitán actual delegó el rol); `APPLICATION` notifica a
-`currentCaptainId` (un jugador aplicó para ser Capitán). Responde `202
-Accepted` sin cuerpo.
+`initiatedBy` determines the recipient: `DELEGATION` notifies
+`newCaptainId` (the current Captain delegated the role); `APPLICATION`
+notifies `currentCaptainId` (a player applied to become Captain). Responds
+`202 Accepted` with no body.
 
-## Ejemplo: consultar el historial
+## Example: querying the history
 
 `GET /api/notificaciones?leidas=false`
 
-Response `200 OK` (lista de `NotificationResponse`):
+Response `200 OK` (list of `NotificationResponse`):
 
 ```json
 [
@@ -107,32 +173,35 @@ Response `200 OK` (lista de `NotificationResponse`):
 ]
 ```
 
-## Errores
+## Errors
 
-Los errores de negocio (notificación no encontrada, acceso denegado a una
-notificación de otro usuario) se manejan de forma centralizada en
-`infrastructure/in/rest/exception/GlobalExceptionHandler` (`@RestControllerAdvice`) y se
-devuelven con el DTO `ErrorResponse`. Tanto `error` como `message` están siempre en
-español (no se usa el `reasonPhrase` de Spring, que viene en inglés):
+Business errors (notification not found, access denied to another user's
+notification) are handled centrally in
+`infrastructure/in/rest/exception/GlobalExceptionHandler`
+(`@RestControllerAdvice`) and returned with the `ErrorResponse` DTO. Both
+`error` and `message` are always in Spanish (Spring's `reasonPhrase`,
+which comes in English, is not used):
 
-| Código | Causa | `error` |
+| Code | Cause | `error` |
 |---|---|---|
-| `400` | Validación de payload de un webhook (Bean Validation) | "Solicitud inválida" |
-| `401` | Sin autenticación válida para el endpoint (JWT para usuario, API key para webhook) | "No autenticado" |
-| `403` | Autenticado con el mecanismo equivocado (p. ej. API key en un endpoint de usuario) | "Acceso denegado" |
+| `400` | Webhook payload validation (Bean Validation) | "Solicitud inválida" |
+| `401` | No valid authentication for the endpoint (JWT for user, API key for webhook) | "No autenticado" |
+| `403` | Authenticated with the wrong mechanism (e.g. API key on a user endpoint) | "Acceso denegado" |
 | `404` | `NotificationNotFoundException` | "No encontrado" |
-| `500` | Error inesperado no mapeado explícitamente | "Error interno" |
+| `500` | Unexpected error not explicitly mapped | "Error interno" |
 
-## Documentación Swagger por endpoint
+Each of the 13 endpoints has its own `@Operation`/`@ApiResponse`/example
+annotations, defined in an interface separate from the controller
+(`infrastructure/in/rest/swagger/*Api.java`, implemented by the
+corresponding controller) — there are no documentation annotations on the
+controllers themselves.
 
-Cada uno de los 13 endpoints tiene su propia anotación `@Operation`/`@ApiResponse`/ejemplo,
-definida en una interfaz separada del controlador (`infrastructure/in/rest/swagger/*Api.java`,
-implementada por el controller correspondiente) — no hay anotaciones de documentación en los
-controllers mismos.
+## Messaging (RabbitMQ)
 
-## Mensajería (RabbitMQ)
-
-Los mismos 9 eventos de la tabla anterior también pueden llegar por RabbitMQ (ver
-[Arquitectura](arquitectura.md#mensajería-rabbitmq) para el detalle de exchanges, colas,
-DLQ y versionado). Ambos transportes invocan el mismo puerto de dominio, por lo que el
-resultado es idéntico sin importar por cuál llegó el evento.
+The same 9 events from the webhooks table above can also arrive via
+RabbitMQ instead — same validation, same domain ports, same resulting
+notification, just a different transport. See
+[Architecture](arquitectura.md#inter-service-communication-api-events)
+for the exchange/queue layout, retry behavior, and dead-letter handling,
+and [Service Integration](integracion-servicios.md) for the routing-key
+contract with the shared CloudAMQP broker.

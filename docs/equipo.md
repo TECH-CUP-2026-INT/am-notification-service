@@ -1,39 +1,39 @@
-# Equipo
+# Team
 
-Este servicio es desarrollado y mantenido por el equipo **astromerge**,
-dentro de la organización **TECH-CUP 2026 INT**, como parte de la
-plataforma Astro Merge del torneo universitario TechCup Fútbol (dominio
-D3 — Operaciones y Comunicación, junto con `am-matches-service` y
+This service is developed and maintained by the **astromerge** team, within
+the **TECH-CUP 2026 INT** organization, as part of the Astro Merge platform
+for the TechCup Fútbol university tournament (domain D3 — Operations and
+Communication, together with `am-matches-service` and
 `am-logistic-service`).
 
-## Integrantes
+## Members
 
-| Nombre | Rol | Contacto |
+| Name | Role | Contact |
 |---|---|---|
-| _Por completar_ | _Por completar_ | _Por completar_ |
-| _Por completar_ | _Por completar_ | _Por completar_ |
-| _Por completar_ | _Por completar_ | _Por completar_ |
+| Tomas Quiceno Ostos | _To be completed_ | _To be completed_ |
+| Sara Viviana | _To be completed_ | _To be completed_ |
+| Julian Tinjaca | _To be completed_ | _To be completed_ |
+| Johan Beltrán | _To be completed_ | _To be completed_ |
 
-!!! note "Pendiente"
-    Esta tabla es una plantilla. Actualízala con los nombres, roles (p. ej.
-    Backend, QA, DevOps, Product Owner) y medio de contacto de cada
-    integrante del equipo antes de publicar la documentación.
+!!! note "Pending"
+    Roles (e.g. Backend, QA, DevOps, Product Owner) and contact info still
+    need to be filled in for each team member.
 
-## Repositorio
+## Repository
 
-- **Organización:** [TECH-CUP-2026-INT](https://github.com/TECH-CUP-2026-INT)
-- **Repositorio:** [am-notification-service](https://github.com/TECH-CUP-2026-INT/am-notification-service)
-- **Servicios hermanos (astromerge, D3):**
+- **Organization:** [TECH-CUP-2026-INT](https://github.com/TECH-CUP-2026-INT)
+- **Repository:** [am-notification-service](https://github.com/TECH-CUP-2026-INT/am-notification-service)
+- **Sibling services (astromerge, D3):**
   [am-matches-service](https://github.com/TECH-CUP-2026-INT/am-matches-service),
   [am-logistic-service](https://github.com/TECH-CUP-2026-INT/am-logistic-service)
 
-## Convenciones de contribución
+## Contribution conventions
 
-- Ramas de trabajo: `feature/**` hacia `develop`; `develop`/`feature/**`
-  hacia `main` vía pull request.
-- Todo cambio pasa por el pipeline de CI (compilación, pruebas, cobertura,
-  análisis estático) antes de poder integrarse — ver
-  [Configuración](configuracion.md).
-- Los cambios a la documentación se editan directamente en `docs/` y se
-  publican con MkDocs (botón "Edit this page" del sitio, habilitado vía
-  `edit_uri` en `mkdocs.yml`).
+- Working branches: `feature/**` into `develop`; `develop`/`feature/**`
+  into `main` via pull request.
+- Every change goes through the CI pipeline (build, tests, coverage,
+  static analysis) before it can be merged — see
+  [Configuration](configuracion.md).
+- Documentation changes are edited directly under `docs/` and published
+  with MkDocs (the site's "Edit this page" button, enabled via `edit_uri`
+  in `mkdocs.yml`).

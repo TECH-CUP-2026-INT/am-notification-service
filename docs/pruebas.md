@@ -1,67 +1,44 @@
-# Pruebas
+# Testing
 
-## Cómo ejecutar las pruebas
+Context and integration tests use Testcontainers, so you only need Docker
+available on the machine running the tests (no need to start
+Mongo/RabbitMQ by hand). If you still want the infrastructure up for
+manual testing:
 
-```bash
-# Suite completa (el test de contexto de Spring y algunos tests de infraestructura
-# levantan MongoDB y RabbitMQ vía Testcontainers)
-./mvnw test
 
-# Suite completa + gate de cobertura (JaCoCo >= 80%)
-./mvnw verify
-```
+## What the tests cover
 
-Los tests de contexto e integración usan Testcontainers, así que solo necesitas Docker
-disponible en la máquina donde corres las pruebas (no hace falta levantar Mongo/RabbitMQ
-a mano). Si igual quieres tener la infraestructura arriba para probar manualmente:
-
-```bash
-docker compose up -d mongo rabbitmq
-```
-
-## Qué cubren las pruebas
-
-| Área | Cubre |
+| Area | Covers |
 |---|---|
-| `application/usecase/*ListenerImplTest` | Construcción de la notificación a partir de cada tipo de evento de dominio (sanción, mensaje, invitación, etc.) — un test por listener, más propagación de excepciones del caso de uso |
-| `application/usecase/NotificationServiceImplTest` | Reglas de `NotificationUseCase`: pertenencia del destinatario, idempotencia de "marcar como leída", conteo de no leídas, validación de `CreateNotificationCommand`, publicación del evento hacia Estadísticas |
-| `application/mapper/NotificationMapperTest` | Mapeo dominio → `NotificationResponse` |
-| `infrastructure/in/rest/controller/**` | Contrato HTTP de los endpoints de usuario y de los webhooks de eventos, incluyendo validación de payload (body inválido) para cada endpoint |
-| `infrastructure/config/security/*` | `JwtClaimsFilter`, `InternalApiKeyFilter`, `CurrentUserProvider` (incluyendo que un principal de servicio interno no pueda leer el historial de usuario, y viceversa) |
-| `infrastructure/in/rest/exception/GlobalExceptionHandlerTest` | Los 7 handlers y forma del `ErrorResponse` (mensaje en español consistente) |
-| `infrastructure/out/persistence/mongo/NotificationMongoRepositoryTest` | La query custom `markAllAsRead` (`@Query`+`@Update`) contra Mongo real (Testcontainers) |
-| `infrastructure/out/persistence/adapter/NotificationRepositoryAdapterTest` | Mapeo dominio ↔ documento en el adaptador de persistencia |
-| `infrastructure/out/messaging/producer/NotificationEventPublisherTest` | Payload mínimo publicado hacia el exchange de Estadísticas |
-| `infrastructure/out/messaging/consumer/RabbitMqConsumerIntegrationTest` | Un mensaje válido llega al mismo puerto de dominio que el webhook REST equivalente; un mensaje corrupto termina en la DLQ tras los reintentos (Testcontainers RabbitMQ) — representa el patrón común a los 9 consumers |
-| `ServiceNotificationsApplicationTests` | Carga del contexto de Spring Boot (MongoDB y RabbitMQ reales vía Testcontainers) |
+| `application/usecase/*ListenerImplTest` | Building a notification from each domain event type (sanction, message, invitation, etc.) — one test per listener, plus use-case exception propagation |
+| `application/usecase/NotificationServiceImplTest` | `NotificationUseCase` rules: recipient ownership, mark-as-read idempotency, unread count, `CreateNotificationCommand` validation, publishing the event towards Statistics |
+| `application/mapper/NotificationMapperTest` | Domain → `NotificationResponse` mapping |
+| `infrastructure/in/rest/controller/**` | HTTP contract of the user endpoints and the event webhooks, including payload validation (invalid body) for each endpoint |
+| `infrastructure/config/security/*` | `JwtClaimsFilter`, `InternalApiKeyFilter`, `CurrentUserProvider` (including that an internal-service principal cannot read the user's history, and vice versa) |
+| `infrastructure/in/rest/exception/GlobalExceptionHandlerTest` | The 7 handlers and the shape of `ErrorResponse` (consistent Spanish message) |
+| `infrastructure/out/persistence/mongo/NotificationMongoRepositoryTest` | The custom `markAllAsRead` query (`@Query`+`@Update`) against a real Mongo (Testcontainers) |
+| `infrastructure/out/persistence/adapter/NotificationRepositoryAdapterTest` | Domain ↔ document mapping in the persistence adapter |
+| `infrastructure/out/messaging/producer/NotificationEventPublisherTest` | Minimal payload published to the Statistics exchange |
+| `infrastructure/out/messaging/consumer/RabbitMqConsumerIntegrationTest` | A valid message reaches the same domain port as the equivalent REST webhook; a corrupted message ends up in the DLQ after retries (Testcontainers RabbitMQ) — represents the pattern shared by all 9 consumers |
+| `ServiceNotificationsApplicationTests` | Spring Boot context load (real MongoDB and RabbitMQ via Testcontainers) |
 
-## Cobertura mínima
+## Minimum coverage
 
-El pipeline de CI aplica un gate de cobertura de línea del **80%** con
-JaCoCo (`jacoco-maven-plugin`, goal `check`, atado a la fase `verify`),
-excluyendo DTOs, entidades de MongoDB, clases de configuración y la clase principal
-de arranque.
+The CI pipeline applies an **80%** line-coverage gate with JaCoCo
+(`jacoco-maven-plugin`, goal `check`, bound to the `verify` phase),
+excluding DTOs, MongoDB entities, configuration classes, and the main
+bootstrap class.
 
-## Pruebas en el pipeline de CI
+![sonnarQuebe.png](assets/img/sonnarQuebe.png)
 
-El workflow de GitHub Actions (`.github/workflows/ci-push.yml` y los
-equivalentes `pr-master.yml`/`pr-qa.yml`, calcados del pipeline ya probado
-de `am-matches-service`) levanta un contenedor de PostgreSQL como servicio,
-ejecuta `./mvnw test`, publica el reporte de Surefire, corre `./mvnw
-jacoco:check` para el gate de cobertura, publica el reporte de JaCoCo, y
-solo si todo eso pasa corre el análisis estático con SonarQube y empaqueta
-el JAR.
+## Manual end-to-end verification
 
-## Verificación end-to-end manual
+Beyond the automated tests, the full flow was validated manually against
+the Docker stack (see the step-by-step guide in the `README.md`): the 9
+event webhooks, the 4 user endpoints, the three security cases (no API
+key, no JWT, crossed mechanism), and publishing a test message directly to
+`notificaciones.sanciones.q` via the RabbitMQ admin panel, confirming that
+both inbound paths (REST and RabbitMQ) produce the same result.
 
-Además de las pruebas automatizadas, el flujo completo se validó
-manualmente contra el stack de Docker (ver la guía paso a paso en el
-`README.md`): los 9 webhooks de eventos, los 4 endpoints de usuario, los
-tres casos de seguridad (sin API key, sin JWT, mecanismo cruzado), y la
-publicación de un mensaje de prueba directamente en `notificaciones.sanciones.q`
-vía el panel de RabbitMQ, confirmando que ambos caminos de entrada (REST y
-RabbitMQ) producen el mismo resultado.
-
-Ver [Configuración](configuracion.md) para variables de entorno y
-[Arquitectura](arquitectura.md) para el detalle de las reglas de negocio que
-estas pruebas verifican.
+See [Configuration](configuracion.md) for environment variables and
+[Architecture](arquitectura.md) for the business rules these tests verify.

@@ -1,238 +1,254 @@
-# Arquitectura
+# Architecture
 
-## Capas (hexagonal)
+## System architecture
+
+`service-notifications` is one of the ~12 independent microservices behind
+**Astro Merge**. Inside that system it plays a single role: it is the
+**sink** for anything another service decides is worth alerting a user
+about, and the **source** of the history that the frontend's notification
+bell reads from.
+
+```
+ am-matches-service ─┐
+ Communications ──────┤                      ┌──────────────┐
+ Teams ────────────── ┼─▶ service-notifications ─▶ MongoDB    │
+ Enrollment ───────────┤   (REST webhooks +   │   (history)   │
+ Scheduling/Tournaments┘    RabbitMQ queues)   └──────────────┘
+                                  │
+                                  ▼
+                         techcup.exchange (RabbitMQ)
+                                  │
+                                  ▼
+                          Statistics service
+                                  ▲
+                                  │
+                          Frontend (REST, Gateway JWT)
+```
+
+Internally the service follows a **hexagonal (ports & adapters)**
+architecture in three layers:
+
+- **`domain`** — the model, the event contracts, and the inbound/outbound
+  port interfaces. Imports nothing from the other two layers.
+- **`application`** — the use cases that implement those ports. Only
+  depends on `domain`.
+- **`infrastructure`** — the REST controllers, RabbitMQ consumers, Mongo
+  persistence, and security config that implement the ports and drive the
+  use cases. Depends on `domain`/`application`, never the other way
+  around.
+
+See [Components](#components) for the full package breakdown and
+[General flow](#general-flow) for how a request moves through these
+layers.
+
+## Architecture decisions
+
+### Why RabbitMQ?
+
+The service started as REST-only: every producing microservice called a
+webhook, and a slow or unreachable producer had no way to retry a failed
+delivery on its own. Adding RabbitMQ as a **second, equivalent** entry
+point (see [Inter-service communication](#inter-service-communication-api-events))
+gives every producer built-in retries, a dead-letter queue for messages
+that keep failing, and the option to publish fire-and-forget instead of
+waiting on a synchronous HTTP call. The REST webhooks were kept rather
+than replaced, because `am-matches-service` — the one producer that is
+actually connected today — already calls them in production, and
+migrating a live integration to a new transport in the same change would
+have added risk for no immediate benefit. Both transports invoke the same
+domain ports, so a producer can switch from REST to RabbitMQ whenever it's
+ready without this service changing at all.
+
+### Why MongoDB and not a relational database?
+
+A notification is a single, self-contained document: recipient, type,
+message, an optional reference id, and a read/unread flag. There are no
+joins to model and no cross-record transactions to coordinate — every
+write and read is scoped to one notification or to "all notifications for
+this recipient". That fits a document store more naturally than a
+relational schema, and it avoids maintaining versioned migrations for a
+shape that isn't expected to grow relational complexity: `auto-index-
+creation: true` lets the one index this service needs (`recipientId`)
+appear on startup instead of through a migration tool. MongoDB is also
+compatible with Azure Cosmos DB for MongoDB vCore, which is the managed
+option in the platform's Azure subscription.
+
+### Inter-service communication: API / events
+
+Other microservices reach this service through two channels that invoke
+the exact same domain ports (`domain/ports/in`), so the business logic
+never knows or cares which one was used:
+
+- **REST webhooks** (`infrastructure/in/rest/controller/events/*`) — one
+  `POST` endpoint per event type, authenticated with the internal API key.
+  See [API](api.md#event-webhooks-service-to-service-internalapikey).
+- **RabbitMQ queues** (`infrastructure/out/messaging/consumer/*`) — one
+  `@RabbitListener` per event type, on one of two inbound exchanges:
+  `notificaciones.eventos` (owned by this service, for producers without a
+  confirmed shared-exchange prefix yet) and `techcup.exchange` (shared on
+  CloudAMQP, for producers that already publish there). Each main queue
+  has a matching `.dlq`: a listener retries a failing message up to 3
+  times with exponential backoff, and if it still fails the message is
+  routed to its dead-letter queue instead of being lost or retried
+  forever. Every inbound payload carries a `schemaVersion` so the contract
+  can evolve without breaking existing producers.
+
+Outbound, the service publishes a minimal `NotificationCreatedMessage`
+(id, recipient, type, timestamp — never the message text) to
+`techcup.exchange` every time a notification is created, for the
+Statistics service to consume.
+
+Which producer is actually connected through which channel — and which
+integrations are still only proposed — is tracked on its own page:
+[Service Integration](integracion-servicios.md).
+
+## Design patterns
+
+| Pattern | Where | Why |
+|---|---|---|
+| **Hexagonal / Ports & Adapters** | `domain/ports/{in,out}` implemented by `application` (inbound) and `infrastructure` (outbound) | Keeps business rules ignorant of HTTP, Mongo, and RabbitMQ, so any of the three can change independently |
+| **Adapter** | `infrastructure/in/rest/controller/events/*` and `infrastructure/out/messaging/consumer/*` | REST and RabbitMQ are two interchangeable adapters over the same inbound port for a given event |
+| **Composer** (translator/builder) | `domain/service/*NotificationComposer` (one per event type) | Turns an event-specific record into a `CreateNotificationCommand`, keeping the "how do I phrase this notification" decision out of the use case |
+| **Repository + Adapter** | `domain/ports/out/NotificationRepositoryPort` → `infrastructure/out/persistence/adapter/NotificationRepositoryAdapter` | Decouples the domain from Spring Data Mongo's document API |
+| **DTO / Mapper** | `application/mapper/NotificationMapper`, `infrastructure/out/persistence/mapper/NotificationPersistenceMapper` | Explicit conversion at every boundary (domain ↔ HTTP response, domain ↔ Mongo document) instead of leaking one model into another layer |
+| **Chain of Responsibility** | `infrastructure/config/SecurityConfig` filter chain (`JwtClaimsFilter`, `InternalApiKeyFilter`) | Two independent authentication mechanisms are evaluated in sequence, each producing a different principal type |
+| **Retry with backoff** | `RabbitMqConfig` (`RetryOperationsInterceptor`) | Absorbs transient failures on the RabbitMQ entry point before giving up to the DLQ |
+
+## Components
 
 ```
 domain/
-├── model/            Notification, NotificationType, model/event/* (records de evento, sin anotaciones de framework)
+├── model/            Notification, NotificationType, model/event/* (event records, no framework annotations)
+├── service/          *NotificationComposer (6) — event record → CreateNotificationCommand
 ├── ports/
 │   ├── in/           NotificationUseCase, CreateNotificationCommand, *EventListener (6 interfaces)
 │   └── out/          NotificationRepositoryPort, NotificationEventPublisherPort
 └── exception/        NotificationNotFoundException, NotificationAccessDeniedException
 
 application/
-├── usecase/          NotificationServiceImpl, *EventListenerImpl (6) — lógica de negocio, sin conocer HTTP ni Mongo ni RabbitMQ
-└── mapper/           NotificationMapper (dominio → DTO de respuesta)
+├── usecase/          NotificationServiceImpl, *EventListenerImpl (6) — orchestrates composer + repository, no HTTP/Mongo/RabbitMQ awareness
+└── mapper/           NotificationMapper (domain → response DTO)
 
 infrastructure/
 ├── in/rest/
-│   ├── controller/          Webhooks REST + API de usuario (delegan en los puertos de entrada, sin lógica de negocio)
-│   ├── swagger/              Interfaces con las anotaciones OpenAPI (@Operation/@ApiResponse/ejemplos), separadas del controller
-│   └── dto/{request,response}/  DTOs de borde HTTP, con Bean Validation
+│   ├── controller/          Webhooks + user-facing API (delegate to the inbound ports, no business logic)
+│   ├── swagger/              Interfaces holding the OpenAPI annotations (@Operation/@ApiResponse/examples), separate from the controller
+│   └── dto/{request,response}/  HTTP boundary DTOs, with Bean Validation
 ├── out/
 │   ├── persistence/
 │   │   ├── mongo/            NotificationDocument (@Document), NotificationMongoRepository (Spring Data)
-│   │   ├── mapper/            NotificationPersistenceMapper (dominio ↔ documento)
-│   │   └── adapter/           NotificationRepositoryAdapter (implementa el puerto de salida)
+│   │   ├── mapper/            NotificationPersistenceMapper (domain ↔ document)
+│   │   └── adapter/           NotificationRepositoryAdapter (implements the outbound port)
 │   └── messaging/
-│       ├── config/            RabbitMqConfig (exchanges, colas, DLQ, reintentos)
-│       ├── dto/                *MessageV1 (payloads de entrada versionados) + NotificationCreatedMessage (salida hacia Estadísticas)
-│       ├── consumer/           9 *Consumer (@RabbitListener) — segunda puerta de entrada, mismos puertos de dominio que los controllers
-│       └── producer/           NotificationEventPublisher (implementa el puerto de salida hacia Estadísticas)
+│       ├── config/            RabbitMqConfig (exchanges, queues, DLQ, retries)
+│       ├── dto/                *MessageV1 (versioned inbound payloads) + NotificationCreatedMessage (outbound, towards Statistics)
+│       ├── consumer/           9 *Consumer (@RabbitListener)
+│       └── producer/           NotificationEventPublisher (implements the outbound port towards Statistics)
 └── config/            SecurityConfig, OpenApiConfig, InternalApiKeyProperties, MessagingProperties
     └── security/       JwtClaimsFilter, InternalApiKeyFilter, CurrentUserProvider, AuthenticatedUser, InternalServicePrincipal
 ```
 
-Regla de dependencia: `domain` no importa nada de `application` ni `infrastructure`. `application` solo depende de `domain` (puertos e interfaces). `infrastructure` depende de `domain`/`application` para invocarlos, nunca al revés. Los `record` de evento en `domain/model/event` son el contrato de los puertos de entrada; los DTOs HTTP (`infrastructure/in/rest/dto/request`) y los payloads de RabbitMQ (`infrastructure/out/messaging/dto`) son conversiones de borde (`toDomain()`) hacia ese mismo contrato — así REST y RabbitMQ son dos adaptadores intercambiables sobre el mismo caso de uso.
+The `notification` collection stores `id`, `recipientId`, `type` (the
+`NotificationType` enum — kept explicit and specific, e.g. separate
+approved/rejected/cancelled constants, rather than a generic type plus a
+status field, so a screen reader isn't left announcing just a color or
+icon), `message`, `referenceId` (so the frontend can navigate to the
+related resource), `read`, `createdAt`, and `readAt`.
 
-## Modelo de datos
+## General flow
 
-Colección `notification`: `id`, `recipientId` (destinatario), `type` (tipo de
-evento, enum explícito — pensado para accesibilidad, no solo color/ícono),
-`message`, `referenceId` (id del recurso relacionado, para que el frontend
-navegue), `read`, `createdAt`, `readAt`.
+**Inbound event → notification:**
 
-`NotificationType` cubre los requerimientos funcionales con valores
-explícitos (se separan aprobada/rechazada/cancelada y
-programado/reprogramado/cancelado en constantes distintas, no un tipo
-genérico + campo de estado, para que el tipo por sí solo sea semánticamente
-inequívoco para un lector de pantalla).
+1. An event arrives either as a REST webhook request (authenticated via
+   `X-Internal-Api-Key`) or as a RabbitMQ message on one of the inbound
+   queues.
+2. The controller or `@RabbitListener` deserializes the payload and calls
+   its `toDomain()` conversion into the matching event record
+   (`domain/model/event/*`) — this is the only place REST and RabbitMQ
+   payloads differ.
+3. The corresponding `*EventListenerImpl` (application layer) receives the
+   event record, hands it to its `*NotificationComposer` to build a
+   `CreateNotificationCommand`, and passes that command to
+   `NotificationUseCase.create`.
+4. `NotificationServiceImpl` persists the notification through
+   `NotificationRepositoryPort` and publishes a `NotificationCreatedMessage`
+   through `NotificationEventPublisherPort`.
+5. If the message came from RabbitMQ and step 2-4 throws, the container
+   retries up to 3 times before routing the message to its `.dlq`; a REST
+   webhook always returns `202 Accepted` before this pipeline finishes
+   running.
 
-## Seguridad
+**User queries their history:**
 
-Dos mecanismos de autenticación conviven en la misma cadena de filtros de
-Spring Security (`infrastructure/config/SecurityConfig.java`), en el mismo modelo de
-confianza que `am-matches-service` y `am-logistic-service` (el API Gateway
-ya validó la firma del JWT; este servicio no la revalida):
+1. The frontend calls a `/api/notificaciones/**` endpoint with the
+   Gateway's JWT.
+2. `JwtClaimsFilter` decodes the `sub` claim and builds an
+   `AuthenticatedUser` principal — the JWT signature itself is not
+   re-verified, since the Gateway already did that.
+3. `CurrentUserProvider` requires that principal type specifically; an
+   `InternalServicePrincipal` (authenticated with the API key instead)
+   is rejected here.
+4. `NotificationController` delegates to `NotificationUseCase`, which
+   reads or updates through `NotificationRepositoryPort`, and
+   `NotificationMapper` converts the result to `NotificationResponse`.
 
-- **`infrastructure/config/security/JwtClaimsFilter.java`**: decodifica el claim `sub` del JWT
-  para los endpoints consultados por el usuario final
-  (`/api/notificaciones/**` de lectura/marcado).
-- **`infrastructure/config/security/InternalApiKeyFilter.java`**: valida el header
-  `X-Internal-Api-Key` (comparación de tiempo constante con `MessageDigest.isEqual`) para
-  los 9 webhooks de eventos servicio-a-servicio, autenticando como
-  `InternalServicePrincipal` con `ROLE_SERVICIO_INTERNO`.
-- **`infrastructure/config/security/CurrentUserProvider.java`**: exige específicamente un
-  principal de tipo `AuthenticatedUser` — un `InternalServicePrincipal`
-  (autenticado solo con la API key) **no** puede leer el historial de
-  notificaciones, y viceversa un JWT de usuario no autentica un webhook.
+## UML and architecture diagrams
 
-**Implicación operativa (no negociable), igual que en los otros dos
-servicios propios:** este servicio nunca debe exponerse directo a internet
-ni a otros servicios que no sea el API Gateway (para los endpoints de
-usuario) y los servicios de origen autorizados (para los webhooks). Debe
-protegerse a nivel de red.
+The diagrams below cover the two flows described in
+[General flow](#general-flow): how an inbound event becomes a persisted
+notification, and how the layers depend on each other. Source diagram
+files (if exported from a modeling tool) live under
+`docs/assets/diagrams/`.
 
-## Mensajería (RabbitMQ)
+## Diagrams
 
-Desde esta ronda de correcciones, además de los 9 webhooks REST existe una **segunda puerta
-de entrada equivalente** vía RabbitMQ, ambas invocando exactamente los mismos puertos de
-dominio (`domain/ports/in`) — así la lógica de negocio no sabe ni le importa por cuál
-transporte llegó el evento.
+```mermaid
+graph TD
+    subgraph Producers
+        M[am-matches-service]
+        O[Other microservices<br/>Communications / Teams / Enrollment / Scheduling]
+    end
 
-Hay **dos exchanges de entrada distintos** (ver `RabbitMqConfig`), porque no todos los
-equipos productores publican todavía en el broker compartido:
+    M -->|REST webhook| C[infrastructure.in.rest.controller.events]
+    M -.->|RabbitMQ - ready, not yet used| Q[techcup.exchange]
+    O -->|REST webhook - proposed| C
+    O -.->|RabbitMQ - proposed| Q2[notificaciones.eventos]
 
-- `notificaciones.eventos` (topic, durable, propio de este servicio): mensajes de chat,
-  eventos de equipos e inscripción. Sus productores (Comunicaciones, Equipos, Inscripción)
-  aún no tienen un prefijo `techcup.*` confirmado en CloudAMQP, así que sus colas siguen
-  aquí hasta que se confirme (ver sección siguiente).
-- `techcup.exchange` (topic, durable, **compartido en CloudAMQP** entre todos los
-  microservicios de TechCup — ver "RabbitMQ: CloudAMQP compartido" más abajo): sanciones y
-  partidos, publicados por Competencia y Torneos respectivamente.
-- `notificaciones.eventos.dlx` (topic, durable): dead-letter exchange local, usado para
-  las colas de ambos exchanges de entrada — el mecanismo de reintentos/DLQ es un detalle de
-  infraestructura propio de este servicio, no necesita ser compartido.
+    C --> L[application.usecase.*EventListenerImpl]
+    Q --> Cons[infrastructure.out.messaging.consumer.*Consumer]
+    Q2 --> Cons
+    Cons --> L
 
-**Salida hacia Estadísticas:** `NotificationEventPublisher` publica un
-`NotificationCreatedMessage` (payload mínimo: `notificationId`, `recipientId`, `type`,
-`createdAt` — nunca la entidad completa ni el texto del mensaje) al mismo `techcup.exchange`
-compartido, con routing key `techcup.notification.event.created`, cada vez que se crea una
-notificación.
+    L --> Comp[domain.service.*NotificationComposer]
+    Comp --> UC[domain.ports.in.NotificationUseCase]
+    UC --> Repo[domain.ports.out.NotificationRepositoryPort]
+    Repo --> Mongo[(MongoDB)]
+    UC --> Pub[domain.ports.out.NotificationEventPublisherPort]
+    Pub --> Stats[techcup.exchange → Statistics service]
 
-**Colas de entrada** (una cola + una DLQ por evento, ver `RabbitMqConfig`):
+    FE[Frontend] -->|Bearer JWT| NC[NotificationController]
+    NC --> UC
+```
 
-| Exchange | Routing key | Cola | Evento |
-|---|---|---|---|
-| `techcup.exchange` | `techcup.match.event.*` | `notificaciones.sanciones.q` | Sanción por tarjetas (Competencia) |
-| `techcup.exchange` | `techcup.tournament.event.*` | `notificaciones.partidos.q` | Agendamiento de partido (Torneos) |
-| `notificaciones.eventos` | `mensajes.chat` | `notificaciones.mensajes.q` | Nuevo mensaje de chat |
-| `notificaciones.eventos` | `equipos.solicitud` | `notificaciones.equipos.solicitudes.q` | Solicitud de vinculación a equipo |
-| `notificaciones.eventos` | `equipos.respuesta` | `notificaciones.equipos.respuestas.q` | Respuesta a solicitud de vinculación |
-| `notificaciones.eventos` | `equipos.invitacion` | `notificaciones.equipos.invitaciones.q` | Invitación a equipo |
-| `notificaciones.eventos` | `equipos.capitania` | `notificaciones.equipos.capitania.q` | Cesión/solicitud de capitanía |
-| `notificaciones.eventos` | `inscripciones.estado` | `notificaciones.inscripciones.estado.q` | Cambio de estado de inscripción |
-| `notificaciones.eventos` | `inscripciones.comprobante` | `notificaciones.inscripciones.comprobante.q` | Comprobante de inscripción recibido |
+```mermaid
+graph LR
+    subgraph domain
+        Ports[ports.in / ports.out]
+        Model[model]
+        Service[service - Composers]
+    end
+    subgraph application
+        UseCase[usecase]
+        Mapper[mapper]
+    end
+    subgraph infrastructure
+        Rest[in.rest]
+        Messaging[out.messaging]
+        Persistence[out.persistence]
+        Config[config - security]
+    end
 
-## RabbitMQ: CloudAMQP compartido
-
-La plataforma TechCup usa un único broker RabbitMQ administrado en
-[CloudAMQP](https://www.cloudamqp.com/) (plan free), compartido por todos los
-microservicios propios.
-
-| Dato | Valor |
-|---|---|
-| Host | pedir al equipo por canal privado (este repo es público) |
-| Puerto | `5671` (AMQP sobre TLS — obligatorio, CloudAMQP no expone el puerto sin cifrar externamente) |
-| Usuario | pedir al equipo por canal privado |
-| Virtual host | pedir al equipo por canal privado |
-| Exchange compartido | `techcup.exchange` (topic) |
-
-Ni el host, ni el usuario, ni el vhost, ni la contraseña **viven en este repositorio**:
-al ser público, publicar aquí la topología de conexión del broker compartido facilita
-ataques de fuerza bruta contra la contraseña, así que los cuatro se piden por canal
-privado del equipo (la contraseña específicamente a Juan David Rangel Jiménez) y se
-inyectan únicamente como variables de entorno / secretos de la plataforma de despliegue.
-Ver [Configuración](configuracion.md#conectarse-al-rabbitmq-compartido-de-cloudamqp-stagingproducción)
-para la lista completa de variables.
-
-**Contrato de routing keys (parcial, pendiente de confirmar):**
-
-| Servicio | Publica en | Estado |
-|---|---|---|
-| Competencia | `techcup.match.event.*` | ✅ Confirmado por el equipo de Estadísticas — segmento final exacto (p. ej. `techcup.match.event.sancion`) pendiente de confirmar, por eso la binding de `notificaciones.sanciones.q` usa el comodín `*` |
-| Torneos | `techcup.tournament.event.*` | ✅ Confirmado — mismo caso, segmento final pendiente |
-| Notificaciones (este servicio) | `techcup.notification.event.created` | ⚠️ Propuesto por este servicio, siguiendo el mismo patrón `techcup.<dominio>.event.*` — pendiente de confirmar con Estadísticas |
-| Comunicaciones / Equipos / Inscripción | sin prefijo `techcup.*` confirmado todavía | ⚠️ Sus eventos siguen llegando por el exchange local `notificaciones.eventos` (ver tabla de arriba) hasta que definan su convención |
-
-Los detalles completos del contrato están en `docs/rabbitmq-integration.md` del repo de
-Estadísticas (no incluido en este repositorio) — si ese documento define un segmento final
-exacto para `techcup.match.event.*`/`techcup.tournament.event.*`, hay que actualizar
-`ROUTING_KEY_MATCH_EVENTS`/`ROUTING_KEY_TOURNAMENT_EVENTS` en `RabbitMqConfig` para dejar de
-usar el comodín.
-
-**Compatibilidad de deserialización:** como Competencia/Torneos no conocen las clases
-`*MessageV1` de este servicio, el `Jackson2JsonMessageConverter` se configura con
-`TypePrecedence.INFERRED` (en vez de exigir que el header `__TypeId__` del mensaje coincida
-con un nombre de clase local) — el tipo se infiere del parámetro del método
-`@RabbitListener` correspondiente.
-
-**Entornos:** en local (`docker compose up`) y en los tests (Testcontainers), este servicio
-sigue usando su propio RabbitMQ efímero — declara la misma topología (`techcup.exchange`
-incluido) en ese broker local, así que el código y los tests no dependen de conectividad a
-CloudAMQP. Solo el entorno desplegado apunta al broker compartido real, vía las variables de
-entorno `RABBITMQ_HOST`/`RABBITMQ_PORT`/`RABBITMQ_SSL_ENABLED`/etc.
-
-**Reintentos y DLQ:** cada `@RabbitListener` reintenta hasta 3 veces (backoff exponencial
-1s→2s→4s...) vía `RetryOperationsInterceptor`. Si sigue fallando, el contenedor rechaza el
-mensaje sin reencolar (`defaultRequeueRejected=false`); como cada cola principal declara
-`x-dead-letter-exchange`/`x-dead-letter-routing-key`, RabbitMQ lo enruta automáticamente a
-su `<cola>.dlq` para inspección manual, en vez de perderlo o reintentarlo indefinidamente.
-
-**Versionado de contrato:** cada payload de entrada (`infrastructure/out/messaging/dto/*MessageV1`)
-incluye `schemaVersion` para poder evolucionar el contrato sin romper consumidores/productores
-existentes.
-
-**Plan de migración (REST → RabbitMQ):** los 9 webhooks REST **se mantienen activos** junto
-a las colas, porque hoy son el único mecanismo que usan los productores externos
-(`RestSanctionNotifier` en `am-matches-service` está confirmado funcionando así) y
-retirarlos de golpe rompería esa integración. A medida que cada equipo productor migre a
-publicar directamente en la cola correspondiente, su webhook REST puede retirarse sin tocar
-`domain` ni `application` — ambos adaptadores invocan el mismo puerto de entrada.
-
-## Estado de las integraciones entrantes
-
-Este servicio es **puramente un consumidor de eventos** — nunca dispara una
-notificación por iniciativa propia. La siguiente tabla es la fuente de
-verdad de qué integración está realmente conectada con un productor real
-propio del equipo (astromerge) y cuál sigue esperando a que otro equipo
-confirme su contrato:
-
-| Origen | Endpoint REST | Cola RabbitMQ | Estado |
-|---|---|---|---|
-| **Servicio de Partidos** (`am-matches-service`, propio de astromerge) | `POST /api/notificaciones/sanciones` | `notificaciones.sanciones.q` | ✅ **Confirmado y verificado end-to-end (vía REST)** — `RestSanctionNotifier` en matches-service envía el header `X-Internal-Api-Key` en cada llamada. La cola RabbitMQ está lista para cuando ese equipo migre el transporte |
-| Servicio de Comunicaciones | `POST /api/notificaciones/mensajes` | `notificaciones.mensajes.q` | ⚠️ Propuesto — contrato definido de este lado, pendiente de que el equipo dueño lo confirme e implemente el productor |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/solicitudes` | `notificaciones.equipos.solicitudes.q` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/respuestas` | `notificaciones.equipos.respuestas.q` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/invitaciones` | `notificaciones.equipos.invitaciones.q` | ⚠️ Propuesto |
-| Servicio de Equipos | `POST /api/notificaciones/equipos/capitania` | `notificaciones.equipos.capitania.q` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/estado` | `notificaciones.inscripciones.estado.q` | ⚠️ Propuesto |
-| Servicio de Inscripción | `POST /api/notificaciones/inscripciones/comprobante` | `notificaciones.inscripciones.comprobante.q` | ⚠️ Propuesto |
-| Servicio de Agendamiento / Torneos | `POST /api/notificaciones/partidos` | `notificaciones.partidos.q` | ⚠️ Propuesto |
-
-Los payloads propuestos están documentados en el Javadoc de cada record en
-`domain/model/event/*`, junto con las preguntas abiertas para el equipo dueño (por
-ejemplo: si `recipientId` siempre es un único usuario o si el origen debe
-hacer fan-out por cada destinatario).
-
-**Nota de alcance:** ninguno de los ítems "⚠️ Propuesto" es un hueco de
-*este* repositorio — el endpoint REST, la cola RabbitMQ, la validación y la traducción a
-notificación ya están implementados y probados de este lado. Lo que falta
-es un servicio externo (fuera de las tres repos del equipo astromerge) que
-llame a ese endpoint o publique en esa cola. No hay nada más que este
-equipo pueda hacer para "cerrar" esas integraciones sin acceso al código de esos otros
-servicios.
-
-## Servicios propios de astromerge (D3) y sus puertos
-
-| Servicio | Puerto app (Docker) | Puerto MongoDB (host) |
-|---|---|---|
-| `am-matches-service` | `8080` | `27017` |
-| `am-notification-service` | `8083` | `27019` |
-| `am-logistic-service` | `8085` | `27018` |
-
-`am-notification-service` además expone RabbitMQ en `5674` (AMQP) y `15674` (panel de
-administración) en el host, vía `docker-compose.yml`.
-
-## Verificación de conectividad end-to-end
-
-Se levantaron los 3 servicios a la vez (`docker compose up --build` en cada
-repo, sin colisión de puertos) y se disparó una sanción real desde
-`am-matches-service` (2 tarjetas amarillas al mismo jugador). La llamada
-llegó a `POST /api/notificaciones/sanciones` autenticada con
-`X-Internal-Api-Key`, y la notificación quedó visible al consultar `GET
-/api/notificaciones` autenticado como el jugador sancionado. Esto confirma
-en caliente (no solo con tests) que: (a) el fix del header en
-`RestSanctionNotifier` funciona, y (b) el fix de seguridad de esta misma
-auditoría —exigir `ROLE_SERVICIO_INTERNO` en los webhooks— no rompe la
-integración legítima.
+    application --> domain
+    infrastructure --> application
+    infrastructure --> domain
+```

@@ -114,6 +114,7 @@ nav:
   - Configuration: configuracion.md
   - Architecture: arquitectura.md
   - API: api.md
+  - Service Integration: integracion-servicios.md
   - Testing: pruebas.md
   - Team: equipo.md
   - Appendices: anexos.md
